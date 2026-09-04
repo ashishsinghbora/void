@@ -89,59 +89,141 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
         card, markup = get_vault_submenu()
         bot.reply_to(message, card, reply_markup=markup, parse_mode="Markdown")
 
+    @bot.message_handler(commands=["link_vault", "bind_vault"])
+    def handle_link_vault_in_group(message):
+        """Pairs the current group as Cloud Vault directly with one command."""
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+
+        chat_id = message.chat.id
+        chat_type = message.chat.type
+
+        if chat_type not in ("group", "supergroup"):
+            bot.reply_to(
+                message,
+                "ℹ️ *Command must be sent inside your Telegram group!*\n\n"
+                "1. Add `@voidtermuxbot` to your private group as an **Administrator**.\n"
+                "2. Type `/link_vault` inside that group to bind it as your permanent Cloud Vault database.",
+                parse_mode="Markdown",
+            )
+            return
+
+        title = getattr(message.chat, "title", "Void Vault Group")
+        global_cloud_vault.set_vault_group_id(chat_id, group_title=title)
+
+        bot.reply_to(
+            message,
+            f"🚀 *This Group is now Linked as your Persistent Cloud Vault!* ☁️\n\n"
+            f"• *Group Title:* `{title}`\n"
+            f"• *Chat ID:* `{chat_id}`\n\n"
+            "All autonomous memory backups, device screenshots, camera photos, and audit trails "
+            "will be mirrored here automatically as a decentralized database.",
+            parse_mode="Markdown",
+        )
+
     @bot.message_handler(commands=["set_vault"])
     def handle_set_vault(message):
         user_id = message.from_user.id
         if not controller._is_authorized(user_id):
             return
 
+        # If user runs /set_vault directly inside a group, bind it immediately
+        if message.chat.type in ("group", "supergroup"):
+            handle_link_vault_in_group(message)
+            return
+
         parts = message.text.strip().split()
         if len(parts) < 2:
             bot.reply_to(
                 message,
-                "⚠️ *Usage:* `/set_vault <group_chat_id>`\nExample: `/set_vault -1001234567890`\n\n"
-                "_Tip: Add the bot to your group and it will auto-detect the ID!_",
+                "⚠️ *Usage:* `/set_vault <group_link_or_chat_id>`\n\n"
+                "*Options:*\n"
+                "• In-Group Pairing: Type `/link_vault` directly inside your Telegram group\n"
+                "• By Chat ID: `/set_vault -1001234567890`\n"
+                "• By Group Link: `/set_vault https://t.me/+YourInviteLink`\n"
+                "• By Username: `/set_vault @your_vault_group`",
                 parse_mode="Markdown",
             )
             return
 
-        raw_id = parts[1].strip()
-        try:
-            chat_id = int(raw_id)
-        except ValueError:
-            bot.reply_to(message, "❌ Invalid chat ID format. Must be an integer (usually starting with `-100`).")
-            return
+        target = parts[1].strip()
 
-        try:
-            chat_info = bot.get_chat(chat_id)
-            title = getattr(chat_info, "title", "Void Vault Group")
-        except Exception as e:
-            logger.warning(f"Failed to query chat {chat_id}: {e}")
-            title = "Void Vault Group"
+        # Case 1: Numeric Chat ID
+        if target.startswith("-100") or (target.startswith("-") and target[1:].isdigit()) or target.isdigit():
+            try:
+                chat_id = int(target)
+                try:
+                    chat_info = bot.get_chat(chat_id)
+                    title = getattr(chat_info, "title", "Void Vault Group")
+                except Exception:
+                    title = "Void Vault Group"
 
-        global_cloud_vault.set_vault_group_id(chat_id, group_title=title)
+                global_cloud_vault.set_vault_group_id(chat_id, group_title=title)
+                bot.reply_to(
+                    message,
+                    f"✅ *Cloud Vault linked successfully!*\n\n"
+                    f"• *Group Title:* `{title}`\n"
+                    f"• *Chat ID:* `{chat_id}`\n\n"
+                    "All captured media and memory states will now mirror here automatically.",
+                    reply_markup=get_vault_submenu()[1],
+                    parse_mode="Markdown",
+                )
+                return
+            except ValueError:
+                pass
 
-        try:
-            bot.send_message(
-                chat_id,
-                "🚀 *Void Cloud Storage Vault Initialized!*\n\n"
-                "This group has been bound as the primary storage and memory vault for Void Edge Agent.\n"
-                "• Autonomous memory state backups\n"
-                "• Device screenshot and media mirroring\n"
-                "• Real-time query retrieval via `#VOID_VAULT` tags.",
+        # Case 2: Public Username (@group or t.me/group)
+        if target.startswith("@") or ("t.me/" in target and "+" not in target and "joinchat" not in target):
+            username = target.split("t.me/")[-1] if "t.me/" in target else target
+            if not username.startswith("@"):
+                username = f"@{username}"
+            try:
+                chat_info = bot.get_chat(username)
+                chat_id = chat_info.id
+                title = getattr(chat_info, "title", username)
+                global_cloud_vault.set_vault_group_id(chat_id, group_title=title)
+                bot.reply_to(
+                    message,
+                    f"✅ *Cloud Vault linked via Username!*\n\n"
+                    f"• *Group Title:* `{title}`\n"
+                    f"• *Chat ID:* `{chat_id}`",
+                    reply_markup=get_vault_submenu()[1],
+                    parse_mode="Markdown",
+                )
+                return
+            except Exception as e:
+                logger.warning(f"Could not resolve username {username}: {e}")
+
+        # Case 3: Private Invite Link (e.g. https://t.me/+987ZzHO8PrY3N2Fl)
+        if "t.me/" in target:
+            # Store target link in vault config
+            try:
+                global_cloud_vault.db.set_vault_config("pending_invite_link", target)
+            except Exception:
+                pass
+
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            markup.add(types.InlineKeyboardButton("🚀 Open Group Link", url=target))
+            markup.add(types.InlineKeyboardButton("🔄 Refresh Vault Status", callback_data="vault_index"))
+
+            bot.reply_to(
+                message,
+                "🔗 *Telegram Group Link Registered!*\n\n"
+                f"Link: `{target}`\n\n"
+                "⚡ *Final Step to Activate Cloud Database:*\n"
+                "1. Open your group using the button below.\n"
+                "2. Add `@voidtermuxbot` to that group as an **Administrator**.\n"
+                "3. Type `/link_vault` directly inside the group chat!\n\n"
+                "_As soon as you type `/link_vault` in the group, Void will automatically pair it as your permanent cloud memory vault!_",
+                reply_markup=markup,
                 parse_mode="Markdown",
             )
-        except Exception as e:
-            logger.warning(f"Could not post announcement to vault group: {e}")
+            return
 
         bot.reply_to(
             message,
-            f"✅ *Cloud Vault linked successfully!*\n\n"
-            f"• *Group Title:* `{title}`\n"
-            f"• *Chat ID:* `{chat_id}`\n\n"
-            "All captured media and memory states will now mirror here automatically.",
-            reply_markup=get_vault_submenu()[1],
-            parse_mode="Markdown",
+            "⚠️ Could not automatically parse group link. Please ensure bot is added as Admin to your group and type `/link_vault` inside that group.",
         )
 
     @bot.message_handler(commands=["vault_files"])

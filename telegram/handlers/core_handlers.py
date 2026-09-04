@@ -22,6 +22,7 @@ from telegram.database.db_manager import global_bot_db
 from telegram.database.models import UserRole, UserTier
 from telegram.services.device_service import global_device_service
 from telegram.middleware.rate_limit import global_rate_limiter
+from telegram.utils.safe_telegram import safe_reply, safe_send_message, safe_edit_message_text
 
 logger = logging.getLogger("VoidTelegram.CoreHandlers")
 
@@ -366,6 +367,39 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         bot.reply_to(message, f"⚙️ {res.output if res.success else res.error}", parse_mode="Markdown")
 
     # ----------------------------------------------------------------------
+    # AI Conversational Automation Interface (/ai, /chat, /ask)
+    # ----------------------------------------------------------------------
+    @bot.message_handler(commands=["ai", "chat", "ask", "void"])
+    def handle_ai_chat_command(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            active_model = global_model_manager.get_active_model_name() or "Deterministic ReAct Engine"
+            safe_reply(
+                bot,
+                message,
+                f"🧠 *Void Autonomous AI Automation Interface*\n\n"
+                f"• *Active Engine:* `{active_model}`\n"
+                "• *Device Control:* Hardware APIs, Media, Shell & Storage Active\n"
+                "• *Cloud Database:* Group Memory Vault Ready\n\n"
+                "Chat naturally or type `/ai <instruction>` to automate anything on your phone!\n\n"
+                "*Try saying:*\n"
+                "• _\"turn on flashlight and check battery\"_\n"
+                "• _\"open whatsapp and search new messages\"_\n"
+                "• _\"take a photo with front camera and mirror to vault\"_\n"
+                "• _\"clean temp storage and run security audit\"_\n"
+                "• _\"run shell command uptime\"_",
+                parse_mode="Markdown",
+            )
+            return
+
+        query = parts[1].strip()
+        _execute_ai_agent(message, query)
+
+    # ----------------------------------------------------------------------
     # Generic Natural Language Query Handler with Streaming Reasoning
     # ----------------------------------------------------------------------
     @bot.message_handler(func=lambda message: True)
@@ -382,7 +416,8 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
 
         allowed, wait_sec = global_rate_limiter.allow_request(str(user_id), user_tier)
         if not allowed:
-            bot.reply_to(
+            safe_reply(
+                bot,
                 message,
                 f"⚠️ *Rate limit exceeded.* Your plan `{user_tier.value}` requires waiting {wait_sec}s before sending another command.\n"
                 "_Upgrade your plan with `/billing` for higher throughput._",
@@ -396,22 +431,25 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         if not query:
             return
 
-        status_msg = bot.reply_to(message, "🧠 *Deliberating...* Analyzing your request.", parse_mode="Markdown")
+        _execute_ai_agent(message, query)
+
+    def _execute_ai_agent(message, query: str):
+        user_id = message.from_user.id
+        status_msg = safe_reply(bot, message, "🧠 *Deliberating...* Analyzing your request.", parse_mode="Markdown")
         last_thought_edit = [0.0]
 
         def thought_cb(step_num: int, thought_text: str):
             now = time.perf_counter()
             if now - last_thought_edit[0] >= 1.2:
-                try:
-                    bot.edit_message_text(
+                if status_msg and hasattr(status_msg, "message_id"):
+                    safe_edit_message_text(
+                        bot,
                         f"🧠 *Deliberating (Step {step_num})...*\n💭 _{thought_text}_",
                         message.chat.id,
                         status_msg.message_id,
                         parse_mode="Markdown",
                     )
                     last_thought_edit[0] = now
-                except Exception:
-                    pass
 
         try:
             session_id = f"telegram_{user_id}"
@@ -422,18 +460,16 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             )
 
             # Cleanup initial status message
-            try:
-                bot.delete_message(message.chat.id, status_msg.message_id)
-            except Exception:
-                pass
+            if status_msg and hasattr(status_msg, "message_id"):
+                try:
+                    bot.delete_message(message.chat.id, status_msg.message_id)
+                except Exception:
+                    pass
 
-            # Deliver conversational, talkative reply
+            # Deliver conversational reply safely (falls back to clean text if Markdown invalid)
             reply_text = response.conversational_reply or f"✨ *Task Completed:*\n{response.reasoning}"
-            bot.reply_to(message, reply_text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
+            safe_reply(bot, message, reply_text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
 
         except Exception as e:
             logger.error(f"Telegram processing error: {e}")
-            try:
-                bot.edit_message_text(f"❌ *Error executing command:*\n`{str(e)}`", message.chat.id, status_msg.message_id, parse_mode="Markdown")
-            except Exception:
-                bot.reply_to(message, f"❌ *Error executing command:*\n`{str(e)}`", parse_mode="Markdown")
+            safe_reply(bot, message, f"⚠️ *Execution notice:* {str(e)}", parse_mode="Markdown")

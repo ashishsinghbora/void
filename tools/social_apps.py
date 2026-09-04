@@ -290,6 +290,17 @@ class LaunchInstalledAppStrategy(ToolStrategy):
                 duration_ms=0,
             )
 
+        # Universal Camera Intent Fallback for OnePlus/Samsung/Pixel
+        if clean in ("camera", "cam"):
+            cam_intent = SecureCommandExecutor.run(["am", "start", "-a", "android.media.action.STILL_IMAGE_CAMERA"], timeout=5)
+            if not cam_intent.startswith("Error"):
+                return ToolExecutionResult(success=True, output="Successfully launched Device Camera", error=None, duration_ms=0)
+            # Try alternate OEM camera packages
+            for oem_pkg in ("com.oneplus.camera", "com.oplus.camera", "com.google.android.GoogleCamera", "com.sec.android.app.camera"):
+                res_oem = SecureCommandExecutor.run(["monkey", "-p", oem_pkg, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"], timeout=5)
+                if not res_oem.startswith("Error") and "No activities found" not in res_oem:
+                    return ToolExecutionResult(success=True, output=f"Successfully launched Camera ({oem_pkg})", error=None, duration_ms=0)
+
         # Launch via monkey launcher
         cmd = ["monkey", "-p", package, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"]
         res = SecureCommandExecutor.run(cmd, timeout=5)

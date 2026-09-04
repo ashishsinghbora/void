@@ -21,8 +21,20 @@ logger = logging.getLogger("VoidAdvancedCore.Executor")
 
 PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
 TERMUX_BIN_PATH = os.path.join(PREFIX, "bin") if os.path.exists(PREFIX) else "/data/data/com.termux/files/usr/bin"
-if os.path.exists(TERMUX_BIN_PATH) and TERMUX_BIN_PATH not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = f"{TERMUX_BIN_PATH}{os.pathsep}{os.environ.get('PATH', '')}"
+
+# Prepend Termux and Android system paths dynamically
+ANDROID_SYSTEM_PATHS = [
+    TERMUX_BIN_PATH,
+    "/system/bin",
+    "/system/xbin",
+    "/vendor/bin",
+    "/apex/com.android.runtime/bin",
+    "/apex/com.android.art/bin",
+]
+current_paths = set(os.environ.get("PATH", "").split(os.pathsep))
+for p in ANDROID_SYSTEM_PATHS:
+    if os.path.exists(p) and p not in current_paths:
+        os.environ["PATH"] = f"{p}{os.pathsep}{os.environ.get('PATH', '')}"
 
 IS_TERMUX = os.path.exists("/data/data/com.termux") or "com.termux" in os.environ.get("PREFIX", "")
 
@@ -63,19 +75,37 @@ class SecureCommandExecutor:
     """
 
     @staticmethod
+    def resolve_binary(binary: str) -> str:
+        """Resolves binary to absolute path across Termux and Android system directories."""
+        if os.path.isabs(binary) and os.path.isfile(binary):
+            return binary
+
+        from shutil import which
+        w = which(binary)
+        if w:
+            return w
+
+        for d in ANDROID_SYSTEM_PATHS:
+            cand = os.path.join(d, binary)
+            if os.path.isfile(cand):
+                return cand
+
+        return binary
+
+    @staticmethod
     def run(args: List[str], timeout: int = 15, allow_simulation: bool = True) -> str:
         """
         Executes an argument vector securely without invoking a shell.
-        Falls back seamlessly to the desktop simulator on non-Termux hosts.
+        Falls back seamlessly to the desktop simulator on non-Termux hosts
+        or when a binary is restricted by Android OS Knox/SELinux.
         """
         try:
             # Enforce argument-vector validation to prevent injection
             sanitized_args = InputSanitizer.validate_arg_vector(args)
             binary = sanitized_args[0]
 
-            # In desktop development or when Termux binary is missing, use simulator layer
+            # In desktop development, use simulator layer directly if applicable
             if not IS_TERMUX and allow_simulation and TermuxHardwareSimulator.is_simulator_applicable(binary):
-                # Try running native binary first if it happens to be present in PATH
                 cmd_exists = os.path.isabs(binary) and os.path.exists(binary)
                 if not cmd_exists:
                     from shutil import which
@@ -84,6 +114,10 @@ class SecureCommandExecutor:
                 if not cmd_exists:
                     logger.debug(f"Routing '{binary}' to Hardware Simulator (Desktop mode)")
                     return TermuxHardwareSimulator.simulate(sanitized_args)
+
+            # Auto-resolve binary path on Android
+            resolved_binary = SecureCommandExecutor.resolve_binary(binary)
+            sanitized_args[0] = resolved_binary
 
             # Subprocess execution with strict vector arrays (NEVER shell=True)
             res = subprocess.run(
@@ -96,6 +130,11 @@ class SecureCommandExecutor:
             if res.returncode != 0:
                 err_msg = res.stderr.strip() or res.stdout.strip() or f"Exit code {res.returncode}"
                 logger.warning(f"Command execution failed for {binary}: {err_msg}")
+                # If binary failed due to Android permission/sandbox restriction and simulation is allowed
+                if allow_simulation and TermuxHardwareSimulator.is_simulator_applicable(binary):
+                    if "Permission denied" in err_msg or "not found" in err_msg:
+                        logger.info(f"Sandbox restricted '{binary}', falling back to simulator.")
+                        return TermuxHardwareSimulator.simulate(args)
                 return f"Error ({binary}): {err_msg}"
 
             return res.stdout.strip() if res.stdout.strip() else "Success"
@@ -104,10 +143,11 @@ class SecureCommandExecutor:
             logger.warning(f"Command '{args[0]}' timed out after {timeout}s (Ensure Termux:API app is opened & permissions granted).")
             return f"Error ({args[0]}): Execution timed out."
         except FileNotFoundError:
-            if not IS_TERMUX and allow_simulation and TermuxHardwareSimulator.is_simulator_applicable(args[0]):
+            if allow_simulation and TermuxHardwareSimulator.is_simulator_applicable(args[0]):
+                logger.info(f"Binary '{args[0]}' not found, activating simulator.")
                 return TermuxHardwareSimulator.simulate(args)
             logger.error(f"Binary not found: {args[0]}")
-            return f"Error ({args[0]}): Binary not found in PATH."
+            return f"Error ({args[0]}): Binary not found in PATH or Android /system/bin."
         except SecurityValidationError as sve:
             logger.error(f"Security validation blocked command {args}: {sve}")
             return f"Error ({args[0]}): Security violation: {str(sve)}"

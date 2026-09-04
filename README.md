@@ -6,8 +6,8 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Android%20(Termux)%20%7C%20Linux-cyan.svg)](https://termux.dev)
 [![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2030MB%20(Verified)-emerald.svg)](#-memory-benchmarks--efficiency)
-[![Tests](https://img.shields.io/badge/tests-64%2F64%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
-[![Control](https://img.shields.io/badge/control-Mobile%20TUI%20%2B%20Telegram%20Bot-purple.svg)](#-mobile-optimized-rich-tui)
+[![Tests](https://img.shields.io/badge/tests-77%2F77%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Control](https://img.shields.io/badge/control-Mobile%20TUI%20%2B%20Telegram%20Bot%20%2B%20Mini%20App-purple.svg)](#-mobile-optimized-rich-tui)
 
 **Void** is a hyper-minimalist, terminal-and-Telegram-native autonomous Android orchestrator engineered for mobile edge computing. Inspired by ultra-lightweight agent frameworks (like OpenClaw), Void eliminates all heavy web server bloat (zero Flask, zero WSGI, zero HTML/SSE overhead), starting with **zero default extensions** and running as an ultra-lean local daemon controlled exclusively through an interactive rich TUI and an interactive Telegram Bot interface.
 
@@ -67,7 +67,26 @@ void/
 │   ├── repository.py           # Repositories for conversations, logs, telemetry
 │   └── log_pruner.py           # Sliding-window log pruner (guarantees DB < 5MB)
 ├── telegram/
-│   └── bot_controller.py       # Rich Telegram bot UI with interactive inline keyboards
+│   ├── bot_app.py              # Master supervisor for bot polling & Mini App HTTP daemon
+│   ├── bot_controller.py       # Authenticated Telegram bot control plane & keyboard layouts
+│   ├── database/               # SQLite WAL models & thread-safe data access layer
+│   │   ├── models.py           # Dataclasses: User, Device, Subscription, Payment, Settings
+│   │   └── db_manager.py       # Connection pooling, atomic migrations & CRUD operations
+│   ├── middleware/             # Role-based access control & rate limiting
+│   │   ├── auth.py             # Whitelist enforcement & tier-based feature gating
+│   │   └── rate_limit.py       # Dynamic tiered token-bucket rate limiter
+│   ├── services/               # Cryptographic & business logic services
+│   │   ├── tma_auth_service.py # HMAC-SHA256 Telegram Mini App initData validation
+│   │   ├── payment_service.py  # Telegram Stars (XTR) & fiat invoice generation/fulfillment
+│   │   └── device_service.py   # Multi-device registry & remote tool dispatcher
+│   ├── handlers/               # Modular bot command & callback routing
+│   │   ├── core_handlers.py    # /start, /status, /devices, /fastfetch, agent router
+│   │   ├── billing_handlers.py # /billing, Stars invoices, pre-checkout & fulfillment
+│   │   ├── settings_handlers.py# /settings & in-chat preference toggles
+│   │   └── callback_handlers.py# Unified inline button dispatcher
+│   └── webapp/                 # High-performance Telegram Mini App (TMA)
+│       ├── index.html          # Cyber-dark HTML5/Tailwind responsive touch GUI
+│       └── server.py           # Zero-dependency standard library micro HTTP daemon
 ├── tools/
 │   ├── base.py                 # Strategy pattern base class
 │   ├── hardware.py             # Battery, torch, vibration, volume, display
@@ -114,6 +133,58 @@ void setup-bot
    - Whitelists your ID instantly so nobody else can control your phone.
 3. **Confirmation Ping:** Sends an instant verification greeting directly to your Telegram chat.
 4. **Secure Persistence:** Saves credentials to `~/.void/config.env` with `0600` permissions (readable strictly by you).
+
+---
+
+## 🌐 Telegram Bot & Mini App (TMA) Ecosystem
+
+Void includes a production-grade Telegram Bot control plane and embedded HTML5/Tailwind **Telegram Mini App (TMA)** designed for zero-latency remote management.
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     TELEGRAM USER / WEBAPP CLIENT                       │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │  (HTTPS / TMA initData)
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│               VOID LIGHTWEIGHT TMA MICRO SERVER (PORT 8080)             │
+│   • HMAC-SHA256 initData Auth      • FastFetch / Telemetry JSON API     │
+│   • Multi-Device Registry Bridge   • Telegram Stars Invoice Generator   │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                 VOID CONTROL PLANE & RE-ACT AGENT ENGINE                │
+│   • SQLite WAL Persistence         • Tiered Token-Bucket Rate Limiter   │
+│   • Dynamic Plugin Store Loader    • Termux Android Hardware Strategy   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Telegram Mini App (TMA)
+The TMA provides a glassmorphic Cyber-Dark dashboard embedded directly into Telegram chats:
+- **Instant Hardware Gauges:** Live battery percentage, charging state, CPU/RAM usage (<30MB target), and active edge node selector.
+- **Touch Hardware Matrix:** Single-tap triggers for Flashlight, Camera Photo Snap, and Storage Cache Purge.
+- **Cryptographic HMAC-SHA256 Auth:** Implements Telegram's official specification:
+  $$\text{secret\_key} = \text{HMAC-SHA256}(\text{"WebAppData"}, \text{bot\_token})$$
+  $$\text{expected\_hash} = \text{HMAC-SHA256}(\text{secret\_key}, \text{data\_check\_string})$$
+  Rejects tampered requests or expired payloads ($>86400\text{s}$) with constant-time hash comparison.
+- **Zero-Dependency Micro HTTP Daemon:** Runs in a background thread using Python's standard `http.server` with negligible memory overhead (< 2MB RAM).
+
+### 2. Global Monetization & Telegram Stars (`currency="XTR"`)
+Void natively integrates the Telegram Stars API for frictionless in-app purchases:
+
+| Tier | Stars Price | Fiat Equivalent | Device Limit | Rate Limit | Unlocked Capabilities |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Starter (Free)** | **0 ⭐** | Free Forever | 1 Node | 12 req/min | Heuristic ReAct engine, Termux API controls |
+| **Pro Node** | **250 ⭐** | ~$9.99 / mo | Up to 3 Nodes | 60 req/min | SmolLM/Qwen local models, cloud bridge, camera stream |
+| **Enterprise** | **1000 ⭐** | ~$39.99 / mo | Unlimited | 300 req/min | Autonomous multi-device cluster, priority SLA, custom tools |
+
+- **Commands:** Use `/billing` to inspect your active subscription, days remaining, and purchase upgrades.
+- **Pre-Checkout & Fulfillment:** Validates payload signatures with `pre_checkout_query` and atomically provisions subscriptions upon `successful_payment`.
+
+### 3. In-Chat Settings & Multi-Device Control
+- `/devices`: List all registered Android nodes, battery levels, models, and online heartbeats.
+- `/settings`: Interactive inline toggles for **Push Notifications**, **OTP SMS Interception**, **Quiet Hours**, and **Security Hardening** (Standard / High / Strict).
 
 ---
 
@@ -263,24 +334,25 @@ void test
 
 ```text
 ============================= test session starts ==============================
-collected 64 items
+collected 77 items
 
-tests/test_bot_setup.py ...                                              [  4%]
-tests/test_daemons.py ...                                                [  9%]
-tests/test_extensions.py ......                                          [ 18%]
-tests/test_fastfetch.py ...                                              [ 23%]
-tests/test_lru_cache.py ...                                              [ 28%]
-tests/test_model_manager.py ....                                         [ 34%]
-tests/test_react_agent.py ...                                            [ 39%]
-tests/test_security.py ........                                          [ 51%]
-tests/test_simulator.py ..                                               [ 54%]
-tests/test_social_apps.py .....                                          [ 62%]
-tests/test_storage.py ...                                                [ 67%]
-tests/test_telegram_bot.py ....                                          [ 73%]
-tests/test_termux_void.py .............                                  [ 93%]
+tests/test_bot_setup.py ...                                              [  3%]
+tests/test_daemons.py ...                                                [  7%]
+tests/test_extensions.py ......                                          [ 15%]
+tests/test_fastfetch.py ...                                              [ 19%]
+tests/test_lru_cache.py ...                                              [ 23%]
+tests/test_model_manager.py ....                                         [ 28%]
+tests/test_react_agent.py ...                                            [ 32%]
+tests/test_security.py ........                                          [ 42%]
+tests/test_simulator.py ..                                               [ 45%]
+tests/test_social_apps.py .....                                          [ 51%]
+tests/test_storage.py ...                                                [ 55%]
+tests/test_telegram_advanced.py .............                            [ 72%]
+tests/test_telegram_bot.py ....                                          [ 77%]
+tests/test_termux_void.py .............                                  [ 94%]
 tests/test_tools.py ....                                                 [100%]
 
-============================== 64 passed in 2.68s ==============================
+============================== 77 passed in 3.44s ==============================
 ```
 
 ---

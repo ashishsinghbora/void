@@ -3,7 +3,8 @@ telegram/bot_controller.py - Hardened Remote Telegram Bot Control Plane with Ric
 
 Restricts access strictly to whitelisted ADMIN_TELEGRAM_ID, applies token-bucket
 rate limiting and session timeouts, and bridges remote commands to the ReAct agent.
-Includes interactive inline keyboards, photo uploads, app launchers, and FastFetch telemetry.
+Includes interactive inline keyboards, photo uploads, app launchers, FastFetch telemetry,
+Telegram Stars billing, settings management, and Telegram Mini App hooks.
 """
 
 import os
@@ -11,9 +12,8 @@ import re
 import time
 import json
 import logging
-from typing import Optional, Set
+from typing import Optional, Set, Any
 
-from agents.react_agent import global_react_agent
 from security.rate_limiter import TokenBucketRateLimiter, SessionTimeoutManager
 from security.sanitizer import InputSanitizer
 from tools.registry import global_tool_registry
@@ -21,6 +21,10 @@ from storage.repository import ExecutionLogRepository
 from core.fastfetch import global_fastfetch_collector
 from core.model_manager import global_model_manager
 from extensions.manager import global_extension_manager
+
+from telegram.database.db_manager import global_bot_db
+from telegram.database.models import UserRole, UserTier
+from telegram.handlers import register_all_handlers
 
 logger = logging.getLogger("VoidAdvancedCore.Telegram")
 
@@ -89,8 +93,14 @@ class AuthenticatedTelegramController:
                     TelegramSetupWizard.save_configuration(self._token, user_id)
                 except Exception:
                     pass
+            # Auto-register admin user in database
+            global_bot_db.get_or_create_user(telegram_id=user_id, default_role=UserRole.ADMIN)
             return True
-        return user_id in self._admin_ids
+
+        is_auth = user_id in self._admin_ids
+        if is_auth:
+            global_bot_db.get_or_create_user(telegram_id=user_id, default_role=UserRole.ADMIN)
+        return is_auth
 
     def get_main_keyboard(self) -> Any:
         """Constructs rich inline action dashboard."""
@@ -107,16 +117,25 @@ class AuthenticatedTelegramController:
         btn_logs = types.InlineKeyboardButton("📋 Audit Logs", callback_data="cb_logs")
         btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
         btn_sec = types.InlineKeyboardButton("🛡️ Security Hub", callback_data="cb_security")
+        btn_devices = types.InlineKeyboardButton("📱 Edge Devices", callback_data="cb_devices")
+        btn_billing = types.InlineKeyboardButton("💎 Subscriptions", callback_data="cb_billing")
+        btn_settings = types.InlineKeyboardButton("⚙️ Settings", callback_data="cb_settings")
         btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
         btn_models = types.InlineKeyboardButton("🧠 Model Status", callback_data="cb_models")
-        btn_refresh = types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="cb_back_main")
+
+        webapp_url = os.environ.get("VOID_WEBAPP_URL", "")
+        if webapp_url:
+            btn_tma = types.InlineKeyboardButton("⚡ Open Mini App", web_app=types.WebAppInfo(url=webapp_url))
+            markup.add(btn_tma)
 
         markup.add(btn_torch, btn_bat)
         markup.add(btn_photo, btn_clean)
         markup.add(btn_fetch, btn_logs)
         markup.add(btn_plugins, btn_sec)
+        markup.add(btn_devices, btn_billing)
         markup.add(btn_apps, btn_models)
-        markup.add(btn_refresh)
+        markup.add(btn_settings)
+        markup.add(types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="cb_back_main"))
         return markup
 
     def get_security_keyboard(self) -> Any:
@@ -135,13 +154,17 @@ class AuthenticatedTelegramController:
         usage = resource.getrusage(resource.RUSAGE_SELF)
         rss_mb = round(usage.ru_maxrss / 1024.0, 1)
         admins = ", ".join(str(a) for a in self._admin_ids) if self._admin_ids else "Auto-pairing active"
+        user = global_bot_db.get_user(user_id)
+        tier_str = user.tier.value if user else "FREE"
+
         return (
             "🛡️ *Void Security & Session Dashboard*\n\n"
             f"• *Telegram Bot:* `@voidtermuxbot`\n"
             f"• *Whitelisted Admin(s):* `{admins}`\n"
             f"• *Your User ID:* `{user_id}` (Authorized ✅)\n"
+            f"• *Account Tier:* `{tier_str}`\n"
             f"• *Memory RSS:* `{rss_mb} MB` (Target < 30MB)\n"
-            f"• *Rate Limiter:* Token Bucket (`0.5 req/s`, burst 5)\n"
+            f"• *Rate Limiter:* Tiered Token Bucket (`0.5-5.0 req/s`)\n"
             f"• *Session Timeout:* `900s` inactivity TTL\n"
             f"• *Credential Vault:* AES-256-GCM + PBKDF2 (100k iters)\n"
             f"• *Database WAL:* SQLite Write-Ahead Logging active\n\n"
@@ -187,394 +210,8 @@ class AuthenticatedTelegramController:
         return markup
 
     def _register_handlers(self) -> None:
-        """Registers command and message handlers with the telebot instance."""
-        bot = self._bot
-        if not bot:
-            return
-
-        @bot.message_handler(commands=["start", "help", "menu"])
-        def handle_help(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                logger.warning(f"Unauthorized /start attempt from user_id: {user_id}")
-                return
-
-            text = (
-                "⚡ *Void Edge Agent Remote Control Hub*\n\n"
-                "• Tap any quick action button below or send natural language commands:\n"
-                "  _\"turn on torch\"_, _\"battery level\"_, _\"whatsapp 15551234 saying hello\"_\n\n"
-                "• `/fastfetch` - ASCII/Unicode system & edge telemetry\n"
-                "• `/menu` - Display interactive action dashboard\n"
-                "• `/photo` - Capture photo and receive file directly\n"
-                "• `/models` - Local quantized LLM weights & downloads\n"
-                "• `/clean` - Clean system cache and temporary files\n"
-                "• `/status` - Live RAM footprint and background daemons\n"
-                "• `/logs` - View last 5 hardware execution logs"
-            )
-            bot.reply_to(message, text, reply_markup=self.get_main_keyboard(), parse_mode="Markdown")
-
-        @bot.message_handler(commands=["fastfetch"])
-        def handle_fastfetch(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            card = global_fastfetch_collector.render_markdown()
-            bot.reply_to(message, card, parse_mode="Markdown")
-
-        @bot.message_handler(commands=["status"])
-        def handle_status(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            card = global_fastfetch_collector.render_markdown()
-            bot.reply_to(message, card, parse_mode="Markdown")
-
-        @bot.message_handler(commands=["battery"])
-        def handle_battery(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            bat_res = global_tool_registry.execute("get_battery_status")
-            bot.reply_to(message, f"🔋 *Battery Status:*\n```json\n{json.dumps(bat_res.output, indent=2)}\n```", parse_mode="Markdown")
-
-        @bot.message_handler(commands=["torch"])
-        def handle_torch(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            self._torch_on = not self._torch_on
-            global_tool_registry.execute("set_torch", on=self._torch_on)
-            state_str = "ON" if self._torch_on else "OFF"
-            bot.reply_to(message, f"🔦 *Flashlight turned {state_str}*", reply_markup=self.get_main_keyboard(), parse_mode="Markdown")
-
-        @bot.message_handler(commands=["security"])
-        def handle_security(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            card = self._render_security_card(user_id)
-            bot.reply_to(message, card, reply_markup=self.get_security_keyboard(), parse_mode="Markdown")
-
-        @bot.message_handler(commands=["logs"])
-        def handle_logs(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            repo = ExecutionLogRepository()
-            recent = repo.get_recent_logs(limit=5)
-            if not recent:
-                bot.reply_to(message, "No recent execution logs.")
-                return
-
-            lines = ["📋 *Recent Hardware Execution Logs:*"]
-            for l in recent:
-                lines.append(f"• `#{l['step']}` *{l['tool_name']}* - {l['status']} ({l['duration_ms']}ms)")
-            bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
-
-        @bot.message_handler(commands=["models"])
-        def handle_models(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-
-            installed = global_model_manager.list_installed_models()
-            available = global_model_manager.list_available_models()
-            active = global_model_manager.get_active_model_name()
-
-            lines = ["🧠 *Void Local Edge Models:*\n"]
-            lines.append(f"• *Active Engine:* `{active or 'Deterministic Heuristic Router'}`\n")
-            lines.append("*Catalog & Status:*")
-
-            for mid, m in available.items():
-                status_icon = "✅ Installed" if m["installed"] else "📥 Available"
-                lines.append(f"• `{mid}`: *{m['name']}* ({m['size_mb']} MB) - {status_icon}")
-                lines.append(f"  _{m['description']}_")
-
-            lines.append("\n_To download a model:_ `/download <model_id>` (e.g. `/download smollm-135m`)")
-            bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
-
-        @bot.message_handler(commands=["download"])
-        def handle_download(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-
-            parts = message.text.strip().split()
-            if len(parts) < 2:
-                bot.reply_to(message, "Usage: `/download <model_id>` (e.g. `/download smollm-135m`)", parse_mode="Markdown")
-                return
-
-            model_id = parts[1].lower().strip()
-            progress_msg = bot.reply_to(message, f"⏳ Starting download of `{model_id}`...", parse_mode="Markdown")
-
-            last_edit_time = [0.0]
-
-            def progress_cb(downloaded, total, pct, speed_kbps):
-                now = time.perf_counter()
-                if now - last_edit_time[0] >= 1.5 or downloaded == total:
-                    filled = int(pct / 10)
-                    bar = "█" * filled + "░" * (10 - filled)
-                    d_mb = round(downloaded / (1024 * 1024), 1)
-                    t_mb = round(total / (1024 * 1024), 1) if total > 0 else 0
-                    text = f"📥 *Downloading {model_id}*...\n`[{bar}]` {pct}%\n💾 `{d_mb}MB / {t_mb}MB` @ `{speed_kbps:.1f} KB/s`"
-                    try:
-                        bot.edit_message_text(text, message.chat.id, progress_msg.message_id, parse_mode="Markdown")
-                        last_edit_time[0] = now
-                    except Exception:
-                        pass
-
-            res = global_model_manager.download_model(model_id, progress_callback=progress_cb)
-            if res.get("success"):
-                bot.edit_message_text(
-                    f"✅ *Model {model_id} downloaded successfully!*\nSaved to: `{res['path']}` ({res['size_mb']} MB)\nActive in ReAct loop.",
-                    message.chat.id,
-                    progress_msg.message_id,
-                    parse_mode="Markdown"
-                )
-            else:
-                bot.edit_message_text(
-                    f"❌ *Download failed:* {res.get('error')}",
-                    message.chat.id,
-                    progress_msg.message_id,
-                    parse_mode="Markdown"
-                )
-
-        @bot.message_handler(commands=["photo"])
-        def handle_photo(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            self._execute_photo_capture(message.chat.id)
-
-        @bot.message_handler(commands=["clean"])
-        def handle_clean(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            res = global_tool_registry.execute("clean_system", dry_run=False)
-            summary = res.output.get("summary", "Cleaned") if isinstance(res.output, dict) else str(res.output)
-            bot.reply_to(message, f"🧹 *Storage Clean Complete:*\n`{summary}`", parse_mode="Markdown")
-
-        @bot.message_handler(commands=["plugins"])
-        def handle_plugins(message):
-            user_id = message.from_user.id
-            if not self._is_authorized(user_id):
-                return
-            catalog = global_extension_manager.search_catalog()
-            installed = global_extension_manager.list_extensions()
-            text = (
-                f"🧩 *Void Dynamic Plugin Store*\n\n"
-                f"• *Active Plugins:* `{len(installed)}` (Zero default bloat)\n"
-                f"• *Catalog Items:* `{len(catalog)}` available\n\n"
-                "Tap an option below to install or remove community plugins securely:"
-            )
-            bot.reply_to(message, text, reply_markup=self.get_plugins_keyboard(), parse_mode="Markdown")
-
-        # ----------------------------------------------------------------------
-        # Inline Callback Query Handler
-        # ----------------------------------------------------------------------
-        @bot.callback_query_handler(func=lambda call: True)
-        def handle_callback_query(call):
-            user_id = call.from_user.id
-            chat_id = call.message.chat.id
-            message_id = call.message.message_id
-
-            if not self._is_authorized(user_id):
-                bot.answer_callback_query(call.id, "Unauthorized access denied.", show_alert=True)
-                return
-
-            data = call.data
-
-            if data == "cb_torch":
-                self._torch_on = not self._torch_on
-                global_tool_registry.execute("set_torch", on=self._torch_on)
-                status_str = "ON" if self._torch_on else "OFF"
-                bot.answer_callback_query(call.id, f"🔦 Flashlight turned {status_str}")
-                try:
-                    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=self.get_main_keyboard())
-                except Exception:
-                    pass
-
-            elif data == "cb_battery":
-                bat_res = global_tool_registry.execute("get_battery_status")
-                pct = "N/A"
-                stat = "Unknown"
-                if bat_res.success and isinstance(bat_res.output, dict):
-                    pct = f"{bat_res.output.get('percentage', 'N/A')}%"
-                    stat = bat_res.output.get("status", "Unknown")
-                bot.answer_callback_query(call.id, f"🔋 Battery: {pct} ({stat})", show_alert=True)
-
-            elif data == "cb_photo":
-                bot.answer_callback_query(call.id, "Capturing photo...")
-                self._execute_photo_capture(chat_id)
-
-            elif data == "cb_clean":
-                bot.answer_callback_query(call.id, "Cleaning temporary cache...")
-                res = global_tool_registry.execute("clean_system", dry_run=False)
-                summary = res.output.get("summary", "Cleaned") if isinstance(res.output, dict) else str(res.output)
-                bot.send_message(chat_id, f"🧹 *Storage Clean Report:*\n`{summary}`", parse_mode="Markdown")
-
-            elif data == "cb_fastfetch":
-                bot.answer_callback_query(call.id)
-                card = global_fastfetch_collector.render_markdown()
-                bot.send_message(chat_id, card, parse_mode="Markdown")
-
-            elif data == "cb_logs":
-                bot.answer_callback_query(call.id)
-                repo = ExecutionLogRepository()
-                recent = repo.get_recent_logs(limit=5)
-                lines = ["📋 *Recent Hardware Execution Logs:*"]
-                for l in recent:
-                    lines.append(f"• `#{l['step']}` *{l['tool_name']}* - {l['status']} ({l['duration_ms']}ms)")
-                bot.send_message(chat_id, "\n".join(lines) if recent else "No recent logs.", parse_mode="Markdown")
-
-            elif data == "cb_security":
-                bot.answer_callback_query(call.id)
-                card = self._render_security_card(user_id)
-                try:
-                    bot.edit_message_text(
-                        card,
-                        chat_id,
-                        message_id,
-                        reply_markup=self.get_security_keyboard(),
-                        parse_mode="Markdown"
-                    )
-                except Exception:
-                    bot.send_message(chat_id, card, reply_markup=self.get_security_keyboard(), parse_mode="Markdown")
-
-            elif data == "cb_apps":
-                bot.answer_callback_query(call.id)
-                try:
-                    bot.edit_message_text(
-                        "🚀 *Application Launch Center*\nSelect an app to open directly on your phone:",
-                        chat_id,
-                        message_id,
-                        reply_markup=self.get_apps_keyboard(),
-                        parse_mode="Markdown"
-                    )
-                except Exception:
-                    pass
-
-            elif data == "cb_back_main":
-                bot.answer_callback_query(call.id)
-                try:
-                    bot.edit_message_text(
-                        "⚡ *Void Edge Agent Remote Control Hub*\nQuick action dashboard active:",
-                        chat_id,
-                        message_id,
-                        reply_markup=self.get_main_keyboard(),
-                        parse_mode="Markdown"
-                    )
-                except Exception:
-                    pass
-
-            elif data == "cb_models":
-                bot.answer_callback_query(call.id)
-                active = global_model_manager.get_active_model_name()
-                installed = global_model_manager.list_installed_models()
-                bot.send_message(
-                    chat_id,
-                    f"🧠 *Active Model Engine:*\n`{active or 'Deterministic ReAct (Zero-Weight Heuristic)'}`\n\n"
-                    f"Installed weights: `{len(installed)}`\nUse `/models` to inspect or download models.",
-                    parse_mode="Markdown"
-                )
-
-            elif data.startswith("app_launch:"):
-                app_name = data.split(":", 1)[1]
-                bot.answer_callback_query(call.id, f"Launching {app_name}...")
-                res = global_tool_registry.execute("launch_installed_app", app_name=app_name)
-                bot.send_message(
-                    chat_id,
-                    f"🚀 {res.output if res.success else res.error}",
-                    parse_mode="Markdown"
-                )
-
-            elif data == "cb_plugins":
-                bot.answer_callback_query(call.id)
-                catalog = global_extension_manager.search_catalog()
-                installed = global_extension_manager.list_extensions()
-                text = (
-                    f"🧩 *Void Dynamic Plugin Store*\n\n"
-                    f"• *Active Plugins:* `{len(installed)}` (Zero default bloat)\n"
-                    f"• *Catalog Items:* `{len(catalog)}` available\n\n"
-                    "Tap an extension below to install or remove on-demand:"
-                )
-                try:
-                    bot.edit_message_text(text, chat_id, message_id, reply_markup=self.get_plugins_keyboard(), parse_mode="Markdown")
-                except Exception:
-                    pass
-
-            elif data.startswith("plugin_install:"):
-                pid = data.split(":", 1)[1]
-                bot.answer_callback_query(call.id, f"Installing {pid}...")
-                res = global_extension_manager.install_plugin(pid)
-                if res.get("success"):
-                    bot.send_message(chat_id, f"✅ *Plugin '{pid}' installed!* Tools: `{res.get('tools')}`", parse_mode="Markdown")
-                else:
-                    bot.send_message(chat_id, f"❌ *Install failed:* {res.get('error')}", parse_mode="Markdown")
-                try:
-                    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=self.get_plugins_keyboard())
-                except Exception:
-                    pass
-
-            elif data.startswith("plugin_remove:"):
-                pid = data.split(":", 1)[1]
-                bot.answer_callback_query(call.id, f"Removing {pid}...")
-                res = global_extension_manager.uninstall_plugin(pid)
-                bot.send_message(chat_id, f"🗑️ *{res.get('message')}*", parse_mode="Markdown")
-                try:
-                    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=self.get_plugins_keyboard())
-                except Exception:
-                    pass
-
-        # ----------------------------------------------------------------------
-        # Generic Natural Language Query Handler
-        # ----------------------------------------------------------------------
-        @bot.message_handler(func=lambda message: True)
-        def handle_generic_query(message):
-            user_id = message.from_user.id
-
-            if not self._is_authorized(user_id):
-                logger.warning(f"Blocked unauthorized command execution from user_id: {user_id}")
-                return
-
-            allowed, wait_sec = self._rate_limiter.allow_request(str(user_id))
-            if not allowed:
-                bot.reply_to(message, f"⚠️ *Rate limit exceeded.* Please wait {wait_sec}s before sending another command.", parse_mode="Markdown")
-                return
-
-            self._session_manager.touch_session(str(user_id))
-
-            query = message.text.strip() if message.text else ""
-            if not query:
-                return
-
-            try:
-                session_id = f"telegram_{user_id}"
-                response = global_react_agent.run(query, session_id=session_id)
-
-                reply_parts = []
-                if response.results:
-                    reply_parts.append("⚡ *Tool Execution Results:*")
-                    for r in response.results:
-                        if isinstance(r, dict):
-                            reply_parts.append(f"```json\n{json.dumps(r, indent=2)}\n```")
-                        else:
-                            reply_parts.append(f"• `{r}`")
-                else:
-                    reply_parts.append("⚠️ *No tools triggered by query.*")
-
-                if response.reasoning:
-                    reply_parts.append(f"\n🧠 *Agent Reasoning:*\n_{response.reasoning}_")
-
-                if response.confidence is not None:
-                    reply_parts.append(f"🎯 *Confidence:* {int(response.confidence * 100)}%")
-
-                bot.reply_to(message, "\n".join(reply_parts), reply_markup=self.get_main_keyboard(), parse_mode="Markdown")
-
-            except Exception as e:
-                logger.error(f"Telegram processing error: {e}")
-                bot.reply_to(message, f"❌ *Error executing command:*\n`{str(e)}`", parse_mode="Markdown")
+        """Registers all modular command, billing, settings, and callback handlers."""
+        register_all_handlers(self._bot, self)
 
     def _execute_photo_capture(self, chat_id: int) -> None:
         """Captures photo and dispatches file directly to Telegram."""

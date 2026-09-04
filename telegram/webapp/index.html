@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Void Edge Orchestrator — TMA</title>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            void: {
+              bg: '#090b10',
+              card: '#121620',
+              border: '#1e2638',
+              cyan: '#00f2fe',
+              neon: '#4facfe',
+              emerald: '#00ff88',
+              purple: '#8a2be2',
+              pink: '#ff007f'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #090b10;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .glow-cyan {
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.25);
+    }
+    .glow-purple {
+      box-shadow: 0 0 15px rgba(138, 43, 226, 0.25);
+    }
+    .glow-green {
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.25);
+    }
+    .pulse-subtle {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .6; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 max-w-md mx-auto">
+
+  <!-- Header & Authentication Status -->
+  <div>
+    <header class="flex items-center justify-between pb-4 border-b border-void-border">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-void-purple to-void-cyan flex items-center justify-center font-bold text-white shadow-lg">
+          ⚡
+        </div>
+        <div>
+          <h1 class="text-lg font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-void-cyan via-white to-void-emerald">
+            VOID // EDGE
+          </h1>
+          <p class="text-[10px] text-gray-400 font-mono" id="node-id">NODE: PROBING...</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span id="tier-badge" class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-void-purple/30 text-void-cyan border border-void-cyan/30">
+          FREE
+        </span>
+        <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-void-emerald glow-green pulse-subtle"></div>
+      </div>
+    </header>
+
+    <!-- Edge Device Selector -->
+    <div class="mt-4 bg-void-card border border-void-border rounded-xl p-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+          📱 Active Node
+        </span>
+        <span class="text-[10px] text-void-cyan font-mono" id="device-count">1 Node Paired</span>
+      </div>
+      <select id="device-select" class="w-full bg-[#0d111a] border border-void-border rounded-lg py-2 px-3 text-sm text-gray-200 focus:outline-none focus:border-void-cyan transition">
+        <option value="local">Termux Node (Local Host)</option>
+      </select>
+    </div>
+
+    <!-- Live Hardware Telemetry Cards -->
+    <div class="grid grid-cols-2 gap-3 mt-4">
+      <!-- Battery Meter -->
+      <div class="bg-void-card border border-void-border rounded-xl p-3 glow-cyan">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-400">🔋 Battery</span>
+          <span id="battery-status" class="text-[10px] font-mono text-void-emerald">Discharging</span>
+        </div>
+        <div class="mt-2 flex items-baseline space-x-1">
+          <span id="battery-pct" class="text-2xl font-black text-white">--%</span>
+        </div>
+        <div class="w-full bg-gray-800 rounded-full h-1.5 mt-2">
+          <div id="battery-bar" class="bg-void-cyan h-1.5 rounded-full transition-all duration-500" style="width: 50%"></div>
+        </div>
+      </div>
+
+      <!-- Memory RSS -->
+      <div class="bg-void-card border border-void-border rounded-xl p-3 glow-purple">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-400">🧠 Core RSS</span>
+          <span class="text-[10px] font-mono text-gray-400">&lt; 30MB Cap</span>
+        </div>
+        <div class="mt-2 flex items-baseline space-x-1">
+          <span id="ram-usage" class="text-2xl font-black text-white">-- MB</span>
+        </div>
+        <div class="w-full bg-gray-800 rounded-full h-1.5 mt-2">
+          <div id="ram-bar" class="bg-void-purple h-1.5 rounded-full transition-all duration-500" style="width: 25%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Hardware Control Matrix -->
+    <div class="mt-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">⚡ Instant Controls</span>
+        <button onclick="fetchTelemetry()" class="text-xs text-void-cyan hover:underline">🔄 Refresh</button>
+      </div>
+      <div class="grid grid-cols-3 gap-2.5">
+        <button onclick="triggerAction('torch')" id="btn-torch" class="flex flex-col items-center justify-center p-3 rounded-xl bg-void-card border border-void-border active:scale-95 transition hover:border-void-cyan">
+          <span class="text-xl mb-1">🔦</span>
+          <span class="text-xs font-medium">Flashlight</span>
+          <span id="torch-state" class="text-[9px] text-gray-500 font-mono mt-0.5">OFF</span>
+        </button>
+
+        <button onclick="triggerAction('photo')" class="flex flex-col items-center justify-center p-3 rounded-xl bg-void-card border border-void-border active:scale-95 transition hover:border-void-cyan">
+          <span class="text-xl mb-1">📸</span>
+          <span class="text-xs font-medium">Capture</span>
+          <span class="text-[9px] text-gray-500 font-mono mt-0.5">Rear Lens</span>
+        </button>
+
+        <button onclick="triggerAction('clean')" class="flex flex-col items-center justify-center p-3 rounded-xl bg-void-card border border-void-border active:scale-95 transition hover:border-void-cyan">
+          <span class="text-xl mb-1">🧹</span>
+          <span class="text-xs font-medium">Clean</span>
+          <span class="text-[9px] text-gray-500 font-mono mt-0.5">Purge Cache</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Monetization / Subscription Banner -->
+    <div class="mt-4 bg-gradient-to-r from-void-purple/20 via-void-card to-void-cyan/20 border border-void-cyan/30 rounded-xl p-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+            ⭐ Void Pro & Fleet Upgrades
+          </h3>
+          <p class="text-[11px] text-gray-300 mt-0.5">Unlock SmolLM/Qwen weights & multi-node orchestration.</p>
+        </div>
+        <button onclick="openSubscriptionModal()" class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-void-cyan to-void-neon text-black font-bold text-xs shadow-md active:scale-95 transition">
+          Upgrade
+        </button>
+      </div>
+    </div>
+
+    <!-- Output Feed / Toast Notification -->
+    <div id="output-feed" class="mt-4 p-3 bg-[#0c1017] border border-void-border rounded-xl font-mono text-xs text-gray-300 h-28 overflow-y-auto hidden">
+      <div class="text-[10px] text-void-cyan font-bold mb-1">SYSTEM LOG:</div>
+      <div id="log-content">Awaiting actions...</div>
+    </div>
+  </div>
+
+  <!-- Subscription Modal -->
+  <div id="sub-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-void-card border border-void-border rounded-2xl p-5 w-full max-w-sm">
+      <div class="flex justify-between items-center pb-3 border-b border-void-border">
+        <h3 class="font-bold text-base text-white">⭐ Choose Subscription</h3>
+        <button onclick="closeSubscriptionModal()" class="text-gray-400 hover:text-white text-lg font-bold">&times;</button>
+      </div>
+      <div class="space-y-3 mt-4">
+        <!-- Pro Plan -->
+        <div class="p-3 rounded-xl border border-void-cyan/40 bg-void-cyan/5 flex justify-between items-center">
+          <div>
+            <div class="font-bold text-white text-sm">Void Pro Node</div>
+            <div class="text-[11px] text-gray-400">Local LLMs, 3 Devices, 60 req/min</div>
+            <div class="text-xs font-bold text-void-cyan mt-1">250 Stars / $9.99 mo</div>
+          </div>
+          <button onclick="buySubscription('PRO')" class="px-3 py-1.5 rounded-lg bg-void-cyan text-black font-bold text-xs active:scale-95 transition">
+            Select
+          </button>
+        </div>
+
+        <!-- Enterprise Plan -->
+        <div class="p-3 rounded-xl border border-void-purple/40 bg-void-purple/5 flex justify-between items-center">
+          <div>
+            <div class="font-bold text-white text-sm">Void Enterprise</div>
+            <div class="text-[11px] text-gray-400">Unlimited Fleet, Priority SLA</div>
+            <div class="text-xs font-bold text-void-purple mt-1">1000 Stars / $39.99 mo</div>
+          </div>
+          <button onclick="buySubscription('ENTERPRISE')" class="px-3 py-1.5 rounded-lg bg-void-purple text-white font-bold text-xs active:scale-95 transition">
+            Select
+          </button>
+        </div>
+      </div>
+      <button onclick="closeSubscriptionModal()" class="w-full mt-4 py-2 rounded-xl bg-gray-800 text-gray-300 text-xs font-semibold">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="mt-4 pt-3 border-t border-void-border flex items-center justify-between text-[10px] text-gray-500">
+    <span>Void v2.0 Edge Agent</span>
+    <span class="font-mono">Local Daemon: Active</span>
+  </footer>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    let isTorchOn = false;
+    let currentUserId = null;
+
+    // Initialize Telegram WebApp
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      if (tg.setHeaderColor) tg.setHeaderColor('#090b10');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#090b10');
+    }
+
+    // Authenticate initData with Backend
+    async function initAuth() {
+      const initData = tg?.initData || "";
+      try {
+        const res = await fetch('/api/auth/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData })
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+          currentUserId = data.user.id;
+          document.getElementById('node-id').innerText = `USER: ${data.user.username || data.user.id}`;
+          if (data.tier) {
+            document.getElementById('tier-badge').innerText = data.tier;
+          }
+        }
+      } catch (err) {
+        console.warn("Mini App Auth:", err);
+      }
+    }
+
+    // Fetch Live Telemetry
+    async function fetchTelemetry() {
+      try {
+        const res = await fetch('/api/telemetry');
+        const data = await res.json();
+        if (data.battery) {
+          const pct = data.battery.percentage || 100;
+          document.getElementById('battery-pct').innerText = `${pct}%`;
+          document.getElementById('battery-bar').style.width = `${pct}%`;
+          document.getElementById('battery-status').innerText = data.battery.status || 'OK';
+        }
+        if (data.memory) {
+          document.getElementById('ram-usage').innerText = `${data.memory.rss_mb} MB`;
+          const pct = Math.min(100, Math.round((data.memory.rss_mb / 30.0) * 100));
+          document.getElementById('ram-bar').style.width = `${pct}%`;
+        }
+        if (data.tier) {
+          document.getElementById('tier-badge').innerText = data.tier;
+        }
+      } catch (e) {
+        console.error("Telemetry fetch error:", e);
+      }
+    }
+
+    // Trigger Hardware Action
+    async function triggerAction(action) {
+      logOutput(`Triggering ${action}...`);
+      if (tg?.HapticFeedback) {
+        tg.HapticFeedback.impactOccurred('medium');
+      }
+
+      if (action === 'torch') {
+        isTorchOn = !isTorchOn;
+        document.getElementById('torch-state').innerText = isTorchOn ? 'ON' : 'OFF';
+        document.getElementById('torch-state').className = isTorchOn ? 'text-[9px] text-void-emerald font-mono mt-0.5' : 'text-[9px] text-gray-500 font-mono mt-0.5';
+      }
+
+      try {
+        const res = await fetch('/api/actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, on: isTorchOn })
+        });
+        const data = await res.json();
+        logOutput(`Result: ${JSON.stringify(data.output || data.error || data)}`);
+        fetchTelemetry();
+      } catch (err) {
+        logOutput(`Action failed: ${err.message}`);
+      }
+    }
+
+    function logOutput(msg) {
+      const feed = document.getElementById('output-feed');
+      const content = document.getElementById('log-content');
+      feed.classList.remove('hidden');
+      content.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    }
+
+    function openSubscriptionModal() {
+      document.getElementById('sub-modal').classList.remove('hidden');
+    }
+
+    function closeSubscriptionModal() {
+      document.getElementById('sub-modal').classList.add('hidden');
+    }
+
+    async function buySubscription(tier) {
+      closeSubscriptionModal();
+      logOutput(`Initiating payment invoice for ${tier}...`);
+      try {
+        const res = await fetch('/api/billing/create-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tier: tier, user_id: currentUserId })
+        });
+        const data = await res.json();
+        if (data.invoice_url && tg?.openInvoice) {
+          tg.openInvoice(data.invoice_url, function(status) {
+            logOutput(`Invoice status: ${status}`);
+            fetchTelemetry();
+          });
+        } else {
+          logOutput(data.message || "Invoice requested. Check Telegram conversation.");
+          if (tg) tg.close();
+        }
+      } catch (e) {
+        logOutput(`Billing error: ${e.message}`);
+      }
+    }
+
+    // Auto-poll telemetry every 5 seconds
+    window.addEventListener('DOMContentLoaded', () => {
+      initAuth();
+      fetchTelemetry();
+      setInterval(fetchTelemetry, 5000);
+    });
+  </script>
+</body>
+</html>

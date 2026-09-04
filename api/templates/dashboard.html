@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Void ReAct Edge Platform | Android Termux</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#151f32', 950: '#070b14' },
+                        brand: { cyan: '#06b6d4', emerald: '#10b981', purple: '#8b5cf6' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass {
+            background: rgba(15, 23, 42, 0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.55);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.7); border-radius: 9999px; }
+        @keyframes pulse-subtle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .animate-subtle { animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-cyan-500/30">
+
+    <!-- Top Navigation Header -->
+    <header class="sticky top-0 z-50 glass border-b border-slate-800/80 px-4 lg:px-8 py-3.5 flex items-center justify-between shadow-xl">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-emerald-400 to-indigo-500 p-0.5 shadow-lg shadow-cyan-500/20">
+                <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                    <span class="text-cyan-400 font-black text-lg tracking-tighter">⚡</span>
+                </div>
+            </div>
+            <div>
+                <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+                    Void Edge Core
+                    <span class="text-[10px] font-semibold px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">ReAct Edge Engine</span>
+                </h1>
+                <p class="text-xs text-slate-400">Android / Termux Hardened Runtime</p>
+            </div>
+        </div>
+
+        <!-- Telemetry Status Pills -->
+        <div class="flex items-center space-x-2 md:space-x-4">
+            <div id="ram-pill" class="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-lg glass-card border border-slate-700/50">
+                <span class="text-xs text-slate-400">RAM:</span>
+                <span id="ram-val" class="text-xs font-mono font-bold text-cyan-400">-- MB</span>
+            </div>
+            <div id="battery-pill" class="flex items-center space-x-2 px-3 py-1 rounded-lg glass-card border border-slate-700/50">
+                <span id="battery-icon" class="text-xs">🔋</span>
+                <span id="battery-val" class="text-xs font-mono font-bold text-emerald-400">--%</span>
+            </div>
+            <div class="flex items-center space-x-1.5 px-3 py-1 rounded-lg glass-card border border-slate-700/50">
+                <span id="sse-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-subtle"></span>
+                <span id="sse-status" class="text-xs font-medium text-slate-300">Live SSE</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container Grid -->
+    <main class="max-w-7xl mx-auto px-4 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Chat Console & Live ReAct Stream (8 cols) -->
+        <div class="lg:col-span-8 space-y-6 flex flex-col">
+
+            <!-- Chat / Interaction Glass Box -->
+            <div class="glass rounded-2xl p-5 shadow-2xl flex flex-col h-[520px]">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                        <h2 class="text-sm font-semibold tracking-wide text-slate-200 uppercase">Agent Interaction Console</h2>
+                    </div>
+                    <button onclick="clearChat()" class="text-xs text-slate-400 hover:text-slate-200 transition-colors">Clear</button>
+                </div>
+
+                <!-- Chat Scroll Area -->
+                <div id="chat-box" class="flex-1 overflow-y-auto space-y-4 pr-2 custom-scroll">
+                    <div class="flex items-start space-x-3">
+                        <div class="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs flex-shrink-0">🤖</div>
+                        <div class="bg-slate-800/60 border border-slate-700/50 rounded-2xl rounded-tl-sm p-3.5 text-xs text-slate-200 max-w-[85%] leading-relaxed">
+                            Void ReAct engine initialized. You can test hardware commands like <code class="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300">turn on flashlight</code>, <code class="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300">battery status</code>, <code class="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300">say hello world</code>, or take photos.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Form -->
+                <form id="chat-form" onsubmit="handleSend(event)" class="mt-4 pt-3 border-t border-slate-800/80 flex gap-2">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Type hardware command or plain English query..." 
+                        class="flex-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all font-medium"
+                        autocomplete="off"
+                    />
+                    <button 
+                        type="submit" 
+                        id="send-btn"
+                        class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 flex-shrink-0"
+                    >
+                        <span>Dispatch</span>
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Live ReAct Reasoning Stepper Drawer -->
+            <div class="glass rounded-2xl p-5 shadow-2xl space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <h3 class="text-sm font-semibold tracking-wide text-slate-200 uppercase flex items-center gap-2">
+                        <span class="text-purple-400">🧠</span> Live ReAct Reasoning Stream
+                    </h3>
+                    <span id="active-step-badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">IDLE</span>
+                </div>
+                <div id="reasoning-feed" class="space-y-2 max-h-44 overflow-y-auto pr-2 custom-scroll text-xs">
+                    <div class="text-slate-500 italic">No active deliberation stream. Ready for instructions.</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Quick Action Grid & System Diagnostics (4 cols) -->
+        <div class="lg:col-span-4 space-y-6">
+
+            <!-- Quick Action Grid -->
+            <div class="glass rounded-2xl p-5 shadow-2xl">
+                <h3 class="text-sm font-semibold tracking-wide text-slate-200 uppercase mb-4 flex items-center gap-2">
+                    <span class="text-emerald-400">⚡</span> Quick Hardware Actions
+                </h3>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button onclick="dispatchQuick('turn on flashlight')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-amber-400 text-base mb-1">🔦 Torch ON</div>
+                        <div class="text-[10px] text-slate-400">Activate camera flash</div>
+                    </button>
+                    <button onclick="dispatchQuick('turn off flashlight')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-slate-400 text-base mb-1">🌑 Torch OFF</div>
+                        <div class="text-[10px] text-slate-400">Deactivate flash</div>
+                    </button>
+                    <button onclick="dispatchQuick('what is the battery status?')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-emerald-400 text-base mb-1">🔋 Battery</div>
+                        <div class="text-[10px] text-slate-400">Check level & health</div>
+                    </button>
+                    <button onclick="dispatchQuick('vibrate phone for 1 second')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-indigo-400 text-base mb-1">📳 Vibrate</div>
+                        <div class="text-[10px] text-slate-400">Haptic test 1000ms</div>
+                    </button>
+                    <button onclick="dispatchQuick('take a photo using camera')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-cyan-400 text-base mb-1">📸 Camera</div>
+                        <div class="text-[10px] text-slate-400">Capture photo</div>
+                    </button>
+                    <button onclick="dispatchQuick('say out loud Hello from Void Agent')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-fuchsia-400 text-base mb-1">🗣️ Voice TTS</div>
+                        <div class="text-[10px] text-slate-400">Text-to-speech test</div>
+                    </button>
+                    <button onclick="dispatchQuick('what is on my clipboard?')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-teal-400 text-base mb-1">📋 Clipboard</div>
+                        <div class="text-[10px] text-slate-400">Read system buffer</div>
+                    </button>
+                    <button onclick="dispatchQuick('what network is the phone connected to?')" class="p-3 rounded-xl glass-card hover:bg-slate-800/80 border border-slate-700/50 text-left transition-all group">
+                        <div class="text-blue-400 text-base mb-1">📶 Wi-Fi</div>
+                        <div class="text-[10px] text-slate-400">Check connection</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- System Diagnostics & Daemons Card -->
+            <div class="glass rounded-2xl p-5 shadow-2xl space-y-4">
+                <h3 class="text-sm font-semibold tracking-wide text-slate-200 uppercase flex items-center gap-2">
+                    <span class="text-cyan-400">🛡️</span> Security & System Health
+                </h3>
+                <div class="space-y-3 text-xs">
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-800">
+                        <span class="text-slate-400">Memory Footprint</span>
+                        <span id="mem-status" class="font-mono text-emerald-400 font-bold">< 50MB (Target Met)</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-800">
+                        <span class="text-slate-400">Execution Sandbox</span>
+                        <span class="font-mono text-cyan-400">Arg-Vector / No Shell</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-800">
+                        <span class="text-slate-400">Credential Vault</span>
+                        <span class="font-mono text-indigo-400">AES-256-GCM / PBKDF2</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-800">
+                        <span class="text-slate-400">Local Persistence</span>
+                        <span class="font-mono text-slate-300">SQLite 3 (WAL Mode)</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5">
+                        <span class="text-slate-400">Proactive Daemons</span>
+                        <span id="daemons-badge" class="font-mono text-emerald-400">Active</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Full-Width Bottom Section: Recent Execution Logs Table (12 cols) -->
+        <div class="lg:col-span-12 glass rounded-2xl p-5 shadow-2xl">
+            <div class="flex items-center justify-between mb-4 border-b border-slate-800/80 pb-3">
+                <h3 class="text-sm font-semibold tracking-wide text-slate-200 uppercase flex items-center gap-2">
+                    <span class="text-amber-400">📋</span> Hardware Execution Audit Log
+                </h3>
+                <button onclick="refreshLogs()" class="text-xs px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors">Refresh</button>
+            </div>
+            <div class="overflow-x-auto custom-scroll">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="text-slate-400 border-b border-slate-800/80 font-mono">
+                            <th class="py-2 px-3">Step</th>
+                            <th class="py-2 px-3">Tool Strategy</th>
+                            <th class="py-2 px-3">Inputs</th>
+                            <th class="py-2 px-3">Status</th>
+                            <th class="py-2 px-3">Latency</th>
+                            <th class="py-2 px-3">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body" class="divide-y divide-slate-800/50 font-mono text-slate-300">
+                        <tr>
+                            <td colspan="6" class="py-4 text-center text-slate-500 italic">No execution logs recorded yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Client-Side Real-Time Script -->
+    <script>
+        // Real-Time Server-Sent Events (SSE) Listener
+        let sseSource = null;
+        function initSSE() {
+            sseSource = new EventSource('/api/stream');
+            
+            sseSource.addEventListener('connected', (e) => {
+                document.getElementById('sse-status').textContent = "Live SSE";
+                document.getElementById('sse-indicator').className = "w-2 h-2 rounded-full bg-emerald-500 animate-subtle";
+            });
+
+            sseSource.addEventListener('react_thought', (e) => {
+                const payload = JSON.parse(e.data);
+                appendReasoningStep(payload.step, payload.thought);
+            });
+
+            sseSource.addEventListener('react_started', (e) => {
+                document.getElementById('active-step-badge').textContent = "DELIBERATING";
+                document.getElementById('active-step-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30";
+            });
+
+            sseSource.addEventListener('react_completed', (e) => {
+                document.getElementById('active-step-badge').textContent = "IDLE";
+                document.getElementById('active-step-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
+                refreshLogs();
+            });
+
+            sseSource.onerror = () => {
+                document.getElementById('sse-status').textContent = "Reconnecting";
+                document.getElementById('sse-indicator').className = "w-2 h-2 rounded-full bg-amber-500";
+            };
+        }
+
+        function appendReasoningStep(step, text) {
+            const feed = document.getElementById('reasoning-feed');
+            if (feed.querySelector('.italic')) {
+                feed.innerHTML = '';
+            }
+            const div = document.createElement('div');
+            div.className = "p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300 flex items-start gap-2.5";
+            div.innerHTML = `<span class="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold flex-shrink-0">Step ${step}</span> <span class="leading-relaxed">${text}</span>`;
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        async function handleSend(e) {
+            e.preventDefault();
+            const input = document.getElementById('user-input');
+            const query = input.value.trim();
+            if (!query) return;
+
+            appendMessage('user', query);
+            input.value = '';
+            document.getElementById('send-btn').disabled = true;
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: query })
+                });
+                const data = await res.json();
+                appendAssistantResponse(data);
+            } catch (err) {
+                appendMessage('error', 'Error connecting to agent core: ' + err);
+            } finally {
+                document.getElementById('send-btn').disabled = false;
+                refreshTelemetry();
+                refreshLogs();
+            }
+        }
+
+        function dispatchQuick(cmd) {
+            document.getElementById('user-input').value = cmd;
+            document.getElementById('chat-form').dispatchEvent(new Event('submit'));
+        }
+
+        function appendMessage(role, text) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = "flex items-start space-x-3 " + (role === 'user' ? 'justify-end' : '');
+            
+            if (role === 'user') {
+                div.innerHTML = `
+                    <div class="bg-cyan-600/30 border border-cyan-500/40 rounded-2xl rounded-tr-sm p-3.5 text-xs text-white max-w-[85%] leading-relaxed">
+                        ${escapeHtml(text)}
+                    </div>
+                    <div class="w-7 h-7 rounded-lg bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-xs flex-shrink-0">U</div>
+                `;
+            } else if (role === 'error') {
+                div.innerHTML = `
+                    <div class="w-7 h-7 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-xs flex-shrink-0">⚠️</div>
+                    <div class="bg-red-500/10 border border-red-500/30 rounded-2xl rounded-tl-sm p-3.5 text-xs text-red-300 max-w-[85%] leading-relaxed">
+                        ${escapeHtml(text)}
+                    </div>
+                `;
+            }
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendAssistantResponse(data) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = "flex items-start space-x-3";
+
+            let resultsHtml = '';
+            if (data.results && data.results.length > 0) {
+                resultsHtml = data.results.map(r => {
+                    if (typeof r === 'object') {
+                        return `<pre class="bg-slate-950 p-2.5 rounded-lg overflow-x-auto text-[11px] text-cyan-300 font-mono mt-2">${JSON.stringify(r, null, 2)}</pre>`;
+                    }
+                    return `<div class="mt-1.5 p-2 rounded bg-slate-900/80 text-emerald-300 font-mono text-[11px]">${escapeHtml(String(r))}</div>`;
+                }).join('');
+            } else {
+                resultsHtml = `<div class="text-slate-400 italic mt-1">No output returned.</div>`;
+            }
+
+            const confidenceBadge = data.confidence ? `<span class="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 text-[10px] font-mono border border-cyan-500/20">${Math.round(data.confidence * 100)}% Confidence</span>` : '';
+
+            div.innerHTML = `
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">⚡</div>
+                <div class="bg-slate-800/60 border border-slate-700/50 rounded-2xl rounded-tl-sm p-3.5 text-xs text-slate-200 max-w-[85%] leading-relaxed space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-semibold text-slate-300">${escapeHtml(data.reasoning || 'Evaluated query')}</span>
+                        ${confidenceBadge}
+                    </div>
+                    <div class="pt-1">${resultsHtml}</div>
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function clearChat() {
+            document.getElementById('chat-box').innerHTML = '';
+            document.getElementById('reasoning-feed').innerHTML = '<div class="text-slate-500 italic">No active deliberation stream. Ready for instructions.</div>';
+        }
+
+        async function refreshTelemetry() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data.ram_rss_mb) {
+                    document.getElementById('ram-val').textContent = data.ram_rss_mb + ' MB';
+                }
+                if (data.battery) {
+                    const pct = data.battery.percentage !== undefined ? data.battery.percentage : data.battery;
+                    document.getElementById('battery-val').textContent = pct + '%';
+                }
+            } catch (err) {}
+        }
+
+        async function refreshLogs() {
+            try {
+                const res = await fetch('/api/logs');
+                const logs = await res.json();
+                const tbody = document.getElementById('logs-table-body');
+                if (!logs || logs.length === 0) return;
+
+                tbody.innerHTML = logs.slice(0, 15).map(l => `
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="py-2.5 px-3 font-semibold text-cyan-400">#${l.step}</td>
+                        <td class="py-2.5 px-3 font-bold text-slate-200">${escapeHtml(l.tool_name)}</td>
+                        <td class="py-2.5 px-3 text-slate-400 truncate max-w-[180px]">${escapeHtml(l.tool_input)}</td>
+                        <td class="py-2.5 px-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] ${l.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">${l.status}</span>
+                        </td>
+                        <td class="py-2.5 px-3 text-slate-400">${l.duration_ms}ms</td>
+                        <td class="py-2.5 px-3 text-slate-500">${new Date(l.timestamp * 1000).toLocaleTimeString()}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {}
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            initSSE();
+            refreshTelemetry();
+            refreshLogs();
+            setInterval(refreshTelemetry, 10000);
+        });
+    </script>
+</body>
+</html>

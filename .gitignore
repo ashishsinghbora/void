@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.db-wal
+*.db-shm
+*.enc
+.pytest_cache/
+.env
+.venv
+venv/
+ENV/
+.idea/
+.vscode/
+*.log

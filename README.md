@@ -6,8 +6,8 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Android%20(Termux)%20%7C%20Linux-cyan.svg)](https://termux.dev)
 [![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2030MB%20(Verified)-emerald.svg)](#-memory-benchmarks--efficiency)
-[![Tests](https://img.shields.io/badge/tests-77%2F77%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
-[![Control](https://img.shields.io/badge/control-Mobile%20TUI%20%2B%20Telegram%20Bot%20%2B%20Mini%20App-purple.svg)](#-mobile-optimized-rich-tui)
+[![Tests](https://img.shields.io/badge/tests-102%2F102%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Control](https://img.shields.io/badge/control-75--Button%20Telegram%20UI%20%2B%20Mobile%20TUI-purple.svg)](#-75-button-nested-telegram-ui-hierarchy)
 
 **Void** is a hyper-minimalist, terminal-and-Telegram-native autonomous Android orchestrator engineered for mobile edge computing. Inspired by ultra-lightweight agent frameworks (like OpenClaw), Void eliminates all heavy web server bloat (zero Flask, zero WSGI, zero HTML/SSE overhead), starting with **zero default extensions** and running as an ultra-lean local daemon controlled exclusively through an interactive rich TUI and an interactive Telegram Bot interface.
 

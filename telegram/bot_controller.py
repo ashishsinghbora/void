@@ -103,43 +103,16 @@ class AuthenticatedTelegramController:
         return is_auth
 
     def get_main_keyboard(self) -> Any:
-        """Constructs rich inline action dashboard."""
+        """Constructs Level 1: Root Control Center keyboard (15 categories in 2-column layout)."""
         if not HAS_TELEBOT or types is None:
             return None
-
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        torch_label = "🔦 Torch [OFF]" if not self._torch_on else "🔦 Torch [ON]"
-        btn_torch = types.InlineKeyboardButton(torch_label, callback_data="cb_torch")
-        btn_bat = types.InlineKeyboardButton("🔋 Battery Meter", callback_data="cb_battery")
-        btn_photo = types.InlineKeyboardButton("📸 Take Photo", callback_data="cb_photo")
-        btn_screen = types.InlineKeyboardButton("📱 Screenshot", callback_data="cb_screenshot")
-        btn_clean = types.InlineKeyboardButton("🧹 Clean Storage", callback_data="cb_clean")
-        btn_fetch = types.InlineKeyboardButton("⚡ FastFetch", callback_data="cb_fastfetch")
-        btn_logs = types.InlineKeyboardButton("📋 Audit Logs", callback_data="cb_logs")
-        btn_sec = types.InlineKeyboardButton("🛡️ Security Hub", callback_data="cb_security")
-        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
-        btn_devices = types.InlineKeyboardButton("📱 Edge Devices", callback_data="cb_devices")
-        btn_vault = types.InlineKeyboardButton("☁️ Cloud Vault", callback_data="cb_vault")
-        btn_wizard = types.InlineKeyboardButton("🧙 Model Setup", callback_data="cb_model_wizard")
-        btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
-        btn_billing = types.InlineKeyboardButton("💎 Subscriptions", callback_data="cb_billing")
-        btn_settings = types.InlineKeyboardButton("⚙️ Settings", callback_data="cb_settings")
-
-        webapp_url = os.environ.get("VOID_WEBAPP_URL", "")
-        if webapp_url:
-            btn_tma = types.InlineKeyboardButton("⚡ Open Mini App", web_app=types.WebAppInfo(url=webapp_url))
-            markup.add(btn_tma)
-
-        markup.add(btn_torch, btn_bat)
-        markup.add(btn_photo, btn_screen)
-        markup.add(btn_clean, btn_fetch)
-        markup.add(btn_logs, btn_sec)
-        markup.add(btn_plugins, btn_devices)
-        markup.add(btn_vault, btn_wizard)
-        markup.add(btn_apps, btn_billing)
-        markup.add(btn_settings)
-        markup.add(types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="cb_back_main"))
-        return markup
+        try:
+            from telegram.handlers.menu_router import get_root_menu
+            _, markup = get_root_menu()
+            return markup
+        except Exception as e:
+            logger.error(f"Error generating root keyboard: {e}")
+            return None
 
     def get_security_keyboard(self) -> Any:
         """Constructs security dashboard navigation markup."""

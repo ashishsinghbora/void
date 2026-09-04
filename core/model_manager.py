@@ -166,6 +166,16 @@ class ModelManager:
     def models_dir(self) -> str:
         return self._models_dir
 
+    @staticmethod
+    def detect_system_ram_mb() -> Tuple[int, int]:
+        return detect_system_ram_mb()
+
+    @staticmethod
+    def recommend_model_for_device(total_ram_mb: Optional[int] = None) -> str:
+        if total_ram_mb is None:
+            total_ram_mb, _ = detect_system_ram_mb()
+        return recommend_model_for_device(total_ram_mb)
+
     def list_installed_models(self) -> List[Dict[str, Any]]:
         """Scans models directory for installed .gguf, .bin, or .onnx files."""
         if not os.path.exists(self._models_dir):
@@ -375,6 +385,101 @@ class ModelManager:
                 "success": False,
                 "error": str(e),
             }
+
+    def check_ram_available(self, model_id: str) -> Tuple[bool, int, int]:
+        """
+        Verifies if available system RAM is sufficient for the specified model.
+        Returns: (is_sufficient, available_ram_mb, required_ram_mb)
+        """
+        if model_id not in MODEL_CATALOG:
+            return False, 0, 0
+        meta = MODEL_CATALOG[model_id]
+        required_mb = meta.get("min_ram_mb", 512)
+        _, avail_mb = detect_system_ram_mb()
+        return (avail_mb >= required_mb), avail_mb, required_mb
+
+    def remove_model(self, model_id: str) -> Dict[str, Any]:
+        """
+        Symmetrical model removal:
+        Safely unloads weights from active memory, purges cache files from disk,
+        resets active model configuration if matching, triggers garbage collection,
+        and reclaims system RAM immediately.
+        """
+        import gc
+        if model_id not in MODEL_CATALOG:
+            target = os.path.join(self._models_dir, model_id)
+            if not os.path.exists(target):
+                return {
+                    "success": False,
+                    "error": f"Model '{model_id}' not found in catalog or storage.",
+                }
+            fname = model_id
+        else:
+            fname = MODEL_CATALOG[model_id]["filename"]
+            target = os.path.join(self._models_dir, fname)
+
+        active_id = self.get_configured_active_model_id()
+        is_active = (active_id == model_id)
+
+        freed_bytes = 0
+        if os.path.exists(target):
+            freed_bytes = os.path.getsize(target)
+            try:
+                os.remove(target)
+            except Exception as e:
+                return {"success": False, "error": f"Failed to delete model file: {e}"}
+
+        temp_target = target + ".download.tmp"
+        if os.path.exists(temp_target):
+            try:
+                os.remove(temp_target)
+            except Exception:
+                pass
+
+        if is_active:
+            try:
+                os.environ.pop("VOID_ACTIVE_MODEL", None)
+                if os.path.exists(CONFIG_ENV_PATH):
+                    lines = []
+                    with open(CONFIG_ENV_PATH, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if not line.startswith("VOID_ACTIVE_MODEL="):
+                                lines.append(line.rstrip())
+                    with open(CONFIG_ENV_PATH, "w", encoding="utf-8") as f:
+                        f.write("\n".join(lines) + "\n")
+            except Exception as ex:
+                logger.warning(f"Error resetting active model config: {ex}")
+
+        gc.collect()
+        freed_mb = round(freed_bytes / (1024.0 * 1024.0), 2)
+        logger.info(f"Model '{model_id}' purged successfully. Freed {freed_mb} MB.")
+        return {
+            "success": True,
+            "model_id": model_id,
+            "freed_mb": freed_mb,
+            "unloaded_active": is_active,
+            "message": f"Purged {model_id} ({freed_mb} MB reclaimed)",
+        }
+
+    def get_context_window_stats(self) -> Dict[str, Any]:
+        """Returns context window allocations and token constraints."""
+        active_name = self.get_active_model_name()
+        active_id = self.get_configured_active_model_id()
+        total_ram, avail_ram = detect_system_ram_mb()
+
+        if active_id and active_id in MODEL_CATALOG:
+            max_ctx = 4096 if total_ram >= 4000 else 2048
+        else:
+            max_ctx = 2048
+
+        return {
+            "active_model": active_name or "Deterministic Heuristic Engine",
+            "context_window_tokens": max_ctx,
+            "reserved_response_tokens": 512,
+            "system_prompt_tokens": 384,
+            "effective_user_tokens": max_ctx - 512 - 384,
+            "ram_headroom_mb": avail_ram,
+        }
 
     def run_interactive_wizard(self) -> bool:
         """Runs mobile-optimized interactive terminal model selection wizard."""

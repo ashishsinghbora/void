@@ -1,16 +1,18 @@
 """
-telegram/handlers/vault_handlers.py - Telegram Group Cloud Storage & Memory Vault Handlers.
+telegram/handlers/vault_handlers.py - Cloud Vault & Media Sub-Menu (7 buttons).
 
-Manages group vault auto-detection, manual vault binding, memory backup triggering,
-and cloud file indexing for the "Brain-in-Cloud" architecture.
+Manages Telegram group cloud storage, persistent multi-step memory, front/rear camera
+streaming snapshots, media purging, and cloud file indexing.
 """
 
-import logging
+import os
 import time
-from typing import Any, Optional
+import logging
+from typing import Any, Optional, Tuple
 
 from telegram.services.cloud_vault import global_cloud_vault
 from telegram.database.db_manager import global_bot_db
+from tools.registry import global_tool_registry
 
 logger = logging.getLogger("VoidTelegram.VaultHandlers")
 
@@ -20,60 +22,58 @@ except ImportError:
     types = None
 
 
-def get_vault_keyboard(is_configured: bool = False) -> Any:
-    """Constructs inline action keyboard for Cloud Vault management."""
+def get_vault_submenu() -> Tuple[str, Any]:
+    """Returns card text and inline keyboard for Cloud Vault & Media sub-menu (7 buttons)."""
+    info = global_cloud_vault.get_vault_telemetry()
+    configured = info.get("configured", False)
+    gid = info.get("group_id", "Not Linked")
+    title = info.get("group_title") or "None"
+    f_count = info.get("total_files", 0)
+    mb_stored = round(info.get("bytes_stored", 0) / (1024 * 1024), 2)
+
+    status_icon = "🟢 Connected" if configured else "🔴 Inactive"
+
+    card = (
+        "☁️ *Cloud Vault & Media Center*\n\n"
+        f"• *Vault Status:* `{status_icon}`\n"
+        f"• *Linked Group:* `{title}` (`{gid}`)\n"
+        f"• *Stored Artifacts:* `{f_count}` files (`{mb_stored} MB`)\n\n"
+        "Persistent cloud storage & instant camera media pipeline.\n"
+        "Select a function below or run `/vault` | `/set_vault <id>`:"
+    )
+
     if types is None:
-        return None
+        return card, None
 
     markup = types.InlineKeyboardMarkup(row_width=2)
-    if is_configured:
-        btn_backup = types.InlineKeyboardButton("💾 Backup Memory Now", callback_data="cb_vault_backup")
-        btn_files = types.InlineKeyboardButton("📁 Browse Files", callback_data="cb_vault_files")
-        markup.add(btn_backup, btn_files)
-    btn_refresh = types.InlineKeyboardButton("🔄 Refresh Status", callback_data="cb_vault_status")
-    btn_back = types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main")
-    markup.add(btn_refresh, btn_back)
-    return markup
+    markup.add(
+        types.InlineKeyboardButton("🗄️ Open Vault Index", callback_data="vault_index"),
+        types.InlineKeyboardButton("📸 Instant Snapshot", callback_data="vault_snap"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("🎥 Front Cam Stream", callback_data="vault_cam_front"),
+        types.InlineKeyboardButton("🎥 Rear Cam Stream", callback_data="vault_cam_rear"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("📂 Vault File Explorer", callback_data="vault_explorer"),
+        types.InlineKeyboardButton("🧹 Purge Old Media", callback_data="vault_purge"),
+    )
+    markup.add(types.InlineKeyboardButton("🔙 Root Menu", callback_data="cb_back_main"))
+    return card, markup
+
+
+def get_vault_keyboard(is_configured: bool = False) -> Any:
+    """Constructs inline action keyboard for Cloud Vault management."""
+    return get_vault_submenu()[1]
 
 
 def render_vault_status_card() -> str:
     """Generates formatted Markdown card describing the Cloud Vault status."""
-    info = global_cloud_vault.get_vault_telemetry()
-    configured = info.get("configured", False)
-
-    if not configured:
-        return (
-            "☁️ *Void Cloud Memory Vault: Inactive*\n\n"
-            "Your Void edge agent supports using any private Telegram group as an "
-            "infinite, zero-cost cloud storage vault and persistent memory store.\n\n"
-            "• *Automated Setup:* Add `@voidtermuxbot` to your private group and grant it **Admin** permissions.\n"
-            "• *Manual Setup:* Type `/set_vault <chat_id>` (e.g. `/set_vault -1001234567890`)\n\n"
-            "🔒 _All uploads are indexed locally with SHA-256 and tagged `#VOID_VAULT`._"
-        )
-
-    gid = info.get("group_id", "N/A")
-    title = info.get("group_title") or "Void Vault Group"
-    f_count = info.get("total_files", 0)
-    bytes_stored = info.get("bytes_stored", 0)
-    mb_stored = round(bytes_stored / (1024 * 1024), 2)
-    last_up = info.get("last_upload_iso", "Never")
-
-    return (
-        f"☁️ *Void Cloud Memory Vault: Connected ✅*\n\n"
-        f"• *Vault Group:* `{title}`\n"
-        f"• *Group Chat ID:* `{gid}`\n"
-        f"• *Stored Files:* `{f_count}` items (`{mb_stored} MB`)\n"
-        f"• *Last Backup:* `{last_up}`\n"
-        f"• *Status:* 🟢 Mirroring Active (Screenshots, Media, Memories)\n\n"
-        "💡 _Commands:_\n"
-        "• `/vault` - Inspect vault status\n"
-        "• `/vault_files` - View recent vault records\n"
-        "• `/set_vault <id>` - Switch to another group"
-    )
+    return get_vault_submenu()[0]
 
 
 def register_vault_handlers(bot: Any, controller: Any) -> None:
-    """Registers /vault, /set_vault, /vault_files and group auto-detect handlers."""
+    """Registers /vault, /set_vault, /vault_files and vault_* callback handlers."""
     if not bot:
         return
 
@@ -86,9 +86,8 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
         if not controller._is_authorized(user_id):
             return
 
-        card = render_vault_status_card()
-        is_conf = global_cloud_vault.is_configured()
-        bot.reply_to(message, card, reply_markup=get_vault_keyboard(is_conf), parse_mode="Markdown")
+        card, markup = get_vault_submenu()
+        bot.reply_to(message, card, reply_markup=markup, parse_mode="Markdown")
 
     @bot.message_handler(commands=["set_vault"])
     def handle_set_vault(message):
@@ -113,7 +112,6 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
             bot.reply_to(message, "❌ Invalid chat ID format. Must be an integer (usually starting with `-100`).")
             return
 
-        # Verify chat with Telegram API
         try:
             chat_info = bot.get_chat(chat_id)
             title = getattr(chat_info, "title", "Void Vault Group")
@@ -123,7 +121,6 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
 
         global_cloud_vault.set_vault_group_id(chat_id, group_title=title)
 
-        # Send greeting to vault group
         try:
             bot.send_message(
                 chat_id,
@@ -143,7 +140,7 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
             f"• *Group Title:* `{title}`\n"
             f"• *Chat ID:* `{chat_id}`\n\n"
             "All captured media and memory states will now mirror here automatically.",
-            reply_markup=get_vault_keyboard(True),
+            reply_markup=get_vault_submenu()[1],
             parse_mode="Markdown",
         )
 
@@ -176,9 +173,77 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
         lines.append("\n_All files are accessible directly in your linked Telegram group vault._")
         bot.reply_to(message, "\n".join(lines), parse_mode="Markdown")
 
-    # ----------------------------------------------------------------------
-    # Group Vault Auto-Detection Listener
-    # ----------------------------------------------------------------------
+    @bot.callback_query_handler(func=lambda call: call.data and (call.data.startswith("vault_") or call.data in ("cb_vault", "cb_vault_status", "cb_vault_backup", "cb_vault_files")))
+    def handle_vault_callbacks(call):
+        user_id = call.from_user.id
+        chat_id = call.message.chat.id
+        message_id = call.message.message_id
+
+        if not controller._is_authorized(user_id):
+            bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
+            return
+
+        data = call.data
+        bot.answer_callback_query(call.id)
+
+        if data in ("vault_index", "cb_vault", "cb_vault_status"):
+            card, markup = get_vault_submenu()
+            try:
+                bot.edit_message_text(card, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+            except Exception:
+                bot.send_message(chat_id, card, reply_markup=markup, parse_mode="Markdown")
+
+        elif data in ("vault_snap", "cb_screenshot"):
+            bot.send_message(chat_id, "📸 *Capturing instant snapshot...*", parse_mode="Markdown")
+            if hasattr(controller, "_execute_screenshot_capture"):
+                controller._execute_screenshot_capture(chat_id)
+            else:
+                res = global_tool_registry.execute("capture_screen")
+                bot.send_message(chat_id, f"📸 Snapshot: `{res.output or res.error}`", parse_mode="Markdown")
+
+        elif data == "vault_cam_front":
+            bot.send_message(chat_id, "🎥 *Capturing Front Camera photo...*", parse_mode="Markdown")
+            res = global_tool_registry.execute("take_camera_photo", camera_id="1")
+            bot.send_message(chat_id, f"🎥 Front Cam: `{res.output or res.error}`", parse_mode="Markdown")
+
+        elif data == "vault_cam_rear":
+            bot.send_message(chat_id, "🎥 *Capturing Rear Camera photo...*", parse_mode="Markdown")
+            if hasattr(controller, "_execute_photo_capture"):
+                controller._execute_photo_capture(chat_id)
+            else:
+                res = global_tool_registry.execute("take_camera_photo", camera_id="0")
+                bot.send_message(chat_id, f"🎥 Rear Cam: `{res.output or res.error}`", parse_mode="Markdown")
+
+        elif data in ("vault_explorer", "cb_vault_files"):
+            records = global_cloud_vault.query_vault(limit=8)
+            if not records:
+                bot.send_message(chat_id, "📁 *No vault files recorded yet.*", parse_mode="Markdown")
+            else:
+                lines = ["📂 *Vault File Explorer (Recent 8 Items):*\n"]
+                for r in records:
+                    ts = r.created_at[:16].replace("T", " ")
+                    mb = round(r.file_size / (1024 * 1024), 2)
+                    lines.append(f"• `#{r.id}` *{r.file_name}* ({mb} MB) [{r.category}]")
+                    lines.append(f"  Telegram Msg: `#{r.telegram_message_id}` | `{ts}`")
+                bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown")
+
+        elif data == "vault_purge":
+            # Purge local cache and temp media
+            res = global_tool_registry.execute("clean_system", dry_run=False)
+            summary = res.output.get("summary", "Old cache cleaned") if isinstance(res.output, dict) else str(res.output)
+            bot.send_message(chat_id, f"🧹 *Vault Media Purge Complete:*\n`{summary}`", parse_mode="Markdown")
+
+        elif data == "cb_vault_backup":
+            if not global_cloud_vault.is_configured():
+                bot.send_message(chat_id, "⚠️ Vault not configured. Add bot to a group as Admin or run `/set_vault <id>`.", parse_mode="Markdown")
+            else:
+                res = global_cloud_vault.upload_memory_snapshot()
+                if res.get("success"):
+                    bot.send_message(chat_id, f"✅ *Memory snapshot backed up to Cloud Vault!* (Msg #{res.get('telegram_message_id')})", parse_mode="Markdown")
+                else:
+                    bot.send_message(chat_id, f"❌ Backup failed: {res.get('error')}", parse_mode="Markdown")
+
+    # Group Auto-Detection Listener
     @bot.message_handler(
         func=lambda msg: msg.chat.type in ("group", "supergroup"),
         content_types=["text", "new_chat_members"],
@@ -188,7 +253,6 @@ def register_vault_handlers(bot: Any, controller: Any) -> None:
         chat_id = message.chat.id
         chat_title = getattr(message.chat, "title", "Telegram Group")
 
-        # If vault is not yet configured, attempt auto-configuration
         if not global_cloud_vault.is_configured():
             try:
                 bot_member = bot.get_chat_member(chat_id, bot.get_me().id)

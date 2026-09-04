@@ -173,5 +173,21 @@ class InputSanitizer:
             if "\x00" in arg:
                 raise SecurityValidationError(f"Command argument [{i}] contains forbidden null bytes.")
             sanitized_vector.append(arg)
-
         return sanitized_vector
+
+    @staticmethod
+    def escape_markdown(text: str) -> str:
+        """
+        Escapes Markdown special characters in dynamic values
+        to prevent Telegram 'Bad Request: can't parse entities' errors.
+        """
+        if not isinstance(text, str):
+            text = str(text)
+        escape_chars = r"_*`[]()~>#+-=|{}.!"
+        return re.sub(r"([%s])" % re.escape(escape_chars), r"\\\1", text)
+
+    @staticmethod
+    def safe_text(text: str, max_length: int = 3800) -> str:
+        """Sanitizes string and enforces safe message bounds."""
+        clean = InputSanitizer.sanitize_string(text, max_length=max_length)
+        return clean

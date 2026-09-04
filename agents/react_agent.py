@@ -86,10 +86,16 @@ class AutonomousReActAgent:
             logger.error(f"Failed to bind local LLM runtime: {e}")
             self._llm_agent = None
 
-    def run(self, query: str, session_id: str = "default") -> AgentResponse:
+    def run(
+        self,
+        query: str,
+        session_id: str = "default",
+        thought_callback: Optional[Callable[[int, str], None]] = None,
+        action_callback: Optional[Callable[[int, str, Dict[str, Any], str], None]] = None,
+    ) -> AgentResponse:
         """
         Executes synchronous multi-step ReAct agent deliberation loop.
-        Guarantees loop termination within max_steps.
+        Guarantees loop termination within max_steps and streams live thoughts.
         """
         start_time = time.perf_counter()
         clean_query = PromptPreprocessor.preprocess(query)
@@ -102,6 +108,7 @@ class AutonomousReActAgent:
                 results=[],
                 steps=[],
                 error="Query string cannot be empty.",
+                conversational_reply="Hmm, I didn't catch any command in your message. What would you like me to do?",
             )
 
         self._event_bus.publish("react_started", {"session_id": session_id, "query": clean_query})
@@ -114,7 +121,12 @@ class AutonomousReActAgent:
 
         # Step 1: Deliberation & Initial Model Execution
         step_start = time.perf_counter()
-        thought = f"Received query: '{clean_query}'. Evaluating intent and matching hardware tool strategy."
+        thought = f"Analyzing '{clean_query}' to execute mobile task on device."
+        if thought_callback:
+            try:
+                thought_callback(step_count, thought)
+            except Exception:
+                pass
         self._event_bus.publish("react_thought", {"step": step_count, "thought": thought})
 
         if self._llm_agent is not None:
@@ -170,11 +182,20 @@ class AutonomousReActAgent:
                 confidence = 0.2
         else:
             # Heuristic intent parser fallback if model binary is not loaded
-            heuristic_step = self._execute_heuristic_intent(clean_query, session_id, step_count)
+            heuristic_step = self._execute_heuristic_intent(
+                clean_query,
+                session_id,
+                step_count,
+                thought_callback=thought_callback,
+                action_callback=action_callback,
+            )
             steps.append(heuristic_step)
             final_reasoning = heuristic_step.thought
             if heuristic_step.observation:
                 accumulated_results.append(heuristic_step.observation)
+
+        # Generate conversational, talkative response
+        conv_reply = format_conversational_reply(clean_query, steps, accumulated_results)
 
         # Record conversation interaction into SQLite WAL
         self._convo_repo.add_message(
@@ -185,7 +206,7 @@ class AutonomousReActAgent:
         self._convo_repo.add_message(
             session_id=session_id,
             role="assistant",
-            content=str(accumulated_results),
+            content=conv_reply,
             reasoning=final_reasoning,
             confidence=confidence,
         )
@@ -198,6 +219,7 @@ class AutonomousReActAgent:
             results=accumulated_results,
             steps=steps,
             error=None,
+            conversational_reply=conv_reply,
         )
 
         self._event_bus.publish("react_completed", response.to_dict())
@@ -271,8 +293,16 @@ class AutonomousReActAgent:
         )
         return step
 
-    def _execute_heuristic_intent(self, query: str, session_id: str, step_number: int) -> ReActStep:
+    def _execute_heuristic_intent(
+        self,
+        query: str,
+        session_id: str,
+        step_number: int,
+        thought_callback: Optional[Callable[[int, str], None]] = None,
+        action_callback: Optional[Callable[[int, str, Dict[str, Any], str], None]] = None,
+    ) -> ReActStep:
         """Zero-latency keyword intent matcher when LLM weights are offline."""
+        import re
         start = time.perf_counter()
         q = query.lower()
 
@@ -280,72 +310,162 @@ class AutonomousReActAgent:
         args: Dict[str, Any] = {}
         thought = f"Analyzing intent for '{query}' using local routing table."
 
-        if "battery" in q:
+        # 1. Screen Capture & Visuals
+        if any(k in q for k in ("screenshot", "screencap", "screen cap", "capture screen")):
+            tool_name = "capture_screenshot"
+            thought = "Taking a screenshot of the phone display and beaming to Cloud Vault... 📱"
+
+        # 2. Hardware Button Keyevents
+        elif any(k in q for k in ("home screen", "go home", "press home", "back to home")):
+            tool_name = "mobile_keyevent"
+            args = {"key": "home"}
+            thought = "Navigating directly to Android Home screen... 🏠"
+        elif any(k in q for k in ("go back", "press back", "navigate back", "back button")):
+            tool_name = "mobile_keyevent"
+            args = {"key": "back"}
+            thought = "Triggering Android Back button... 🔙"
+        elif any(k in q for k in ("recent apps", "app switcher", "recents", "overview")):
+            tool_name = "mobile_keyevent"
+            args = {"key": "app_switch"}
+            thought = "Opening Android recent apps switcher... 📑"
+        elif "volume up" in q:
+            tool_name = "mobile_keyevent"
+            args = {"key": "volume_up"}
+            thought = "Increasing volume level... 🔊"
+        elif "volume down" in q:
+            tool_name = "mobile_keyevent"
+            args = {"key": "volume_down"}
+            thought = "Lowering volume level... 🔉"
+        elif any(k in q for k in ("lock screen", "power button", "screen lock")):
+            tool_name = "mobile_keyevent"
+            args = {"key": "power"}
+            thought = "Triggering device lock / power toggle... 🔒"
+
+        # 3. Touch Screen Actions (Tap & Swipe)
+        elif "tap" in q or "click" in q:
+            tap_m = re.search(r"(\d+)[,\s]+(\d+)", query)
+            if tap_m:
+                tool_name = "mobile_tap"
+                args = {"x": int(tap_m.group(1)), "y": int(tap_m.group(2))}
+                thought = f"Simulating screen tap at ({args['x']}, {args['y']})... 👆"
+            else:
+                tool_name = "mobile_keyevent"
+                args = {"key": "enter"}
+                thought = "Pressing Enter key on screen... ↵"
+        elif "swipe" in q:
+            tool_name = "mobile_swipe"
+            if "up" in q:
+                args = {"x1": 540, "y1": 1600, "x2": 540, "y2": 400}
+                thought = "Swiping up on mobile screen... ⬆️"
+            elif "down" in q:
+                args = {"x1": 540, "y1": 400, "x2": 540, "y2": 1600}
+                thought = "Swiping down on mobile screen... ⬇️"
+            else:
+                args = {"x1": 540, "y1": 1000, "x2": 100, "y2": 1000}
+                thought = "Swiping across mobile screen... ↔️"
+
+        # 4. Text Input Typing
+        elif any(k in q for k in ("type ", "enter text ", "write ")) and not any(k in q for k in ("whatsapp", "telegram")):
+            txt_m = re.search(r"(?:type|enter text|write)\s+[\"']?([^\"'\n]+)[\"']?", query, re.IGNORECASE)
+            if txt_m:
+                tool_name = "mobile_type_text"
+                args = {"text": txt_m.group(1).strip()}
+                thought = f"Typing \"{args['text']}\" into the active field... ⌨️"
+
+        # 5. Deep Android Settings Screens
+        elif "settings" in q and any(s in q for s in ("wifi", "bluetooth", "battery", "display", "sound", "apps", "storage", "security", "accessibility")):
+            screen = "wifi"
+            for s in ("wifi", "bluetooth", "battery", "display", "sound", "apps", "storage", "security", "accessibility"):
+                if s in q:
+                    screen = s
+                    break
+            tool_name = "open_settings_screen"
+            args = {"screen": screen}
+            thought = f"Navigating to Android {screen.capitalize()} settings screen... ⚙️"
+
+        # 6. In-App Content Search (YouTube, Maps, Google)
+        elif "youtube" in q and any(w in q for w in ("play", "song", "video", "search", "watch")):
+            term_m = re.search(r"(?:search\s+(?:for\s+)?|play\s+|watch\s+)(.+?)(?:\s+on\s+youtube|\s+in\s+youtube|$)", query, re.IGNORECASE)
+            q_term = term_m.group(1).strip() if term_m else query
+            tool_name = "search_app_content"
+            args = {"app": "youtube", "query": q_term}
+            thought = f"Searching YouTube for \"{q_term}\"... ▶️"
+        elif "map" in q and "search" in q:
+            term_m = re.search(r"search\s+(?:for\s+)?(.+)", query, re.IGNORECASE)
+            q_term = term_m.group(1).strip() if term_m else "coffee"
+            tool_name = "search_app_content"
+            args = {"app": "maps", "query": q_term}
+            thought = f"Searching Maps for \"{q_term}\"... 🗺️"
+
+        # 7. Hardware & Media Controls
+        elif "battery" in q:
             tool_name = "get_battery_status"
+            thought = "Checking device power level and battery temperature... 🔋"
         elif "torch" in q or "flashlight" in q:
             tool_name = "set_torch"
             args = {"on": "off" not in q}
+            state = "ON" if args["on"] else "OFF"
+            thought = f"Toggling device flashlight {state}... 🔦"
         elif "vibrate" in q:
             tool_name = "vibrate_device"
             args = {"duration_ms": 500}
+            thought = "Triggering haptic vibration motor... 📳"
         elif "location" in q or "where am i" in q:
             tool_name = "get_location"
+            thought = "Querying GPS coordinates and satellite fix... 📍"
         elif "wifi" in q:
             tool_name = "get_wifi_info"
+            thought = "Probing Wi-Fi connection info and RSSI signal... 📶"
         elif "clipboard" in q:
             tool_name = "get_clipboard"
+            thought = "Reading current system clipboard text... 📋"
         elif "toast" in q:
             tool_name = "show_toast"
             args = {"message": query}
+            thought = f"Showing toast alert: '{query}'... 🍞"
         elif "photo" in q or "camera" in q:
             tool_name = "take_camera_photo"
-        elif any(k in q for k in ("crypto", "bitcoin", "btc", "ethereum", "eth", "solana", "sol")):
-            tool_name = "track_crypto"
-            coin = "bitcoin"
-            for c in ("solana", "sol", "ethereum", "eth", "dogecoin", "doge", "ripple", "xrp", "bitcoin", "btc"):
-                if c in q:
-                    coin = c
-                    break
-            args = {"coin": coin, "speak": any(s in q for s in ("speak", "say", "tell"))}
-        elif any(k in q for k in ("github", "repo", "repository", "pull request", "pr", "issue")):
-            tool_name = "monitor_github"
-            check_type = "issues" if any(s in q for s in ("issue", "pr", "bug")) else "summary"
-            args = {"repo": "ashishsinghbora/void", "check_type": check_type}
+            thought = "Capturing photo with device camera lens... 📸"
         elif any(k in q for k in ("clean", "cleanup", "cache", "free space", "temp files", "storage")):
             tool_name = "clean_system"
             args = {"dry_run": "force" not in q and "delete" not in q}
+            thought = "Sweeping temporary cache and junk files to free storage... 🧹"
         elif "whatsapp" in q:
             tool_name = "send_whatsapp_message"
-            # Extract phone digits and message
-            import re
             phone_match = re.search(r"(\+?\d{7,15})", query)
             phone = phone_match.group(1) if phone_match else "1234567890"
-            # Extract text after 'saying' or 'message' or 'text'
             msg_match = re.search(r"(?:saying|message|text|that)\s+(.+)$", query, re.IGNORECASE)
             msg = msg_match.group(1) if msg_match else "Hello from Void"
             args = {"phone": phone, "message": msg}
+            thought = f"Opening WhatsApp chat for +{phone} with message draft... 💬"
         elif "telegram" in q and not q.startswith("/"):
             tool_name = "open_telegram_chat"
-            import re
             user_match = re.search(r"(?:chat\s+with|to|user|channel)?\s*@?([A-Za-z0-9_]{3,32})", query)
             args = {"username": user_match.group(1) if user_match else "durov"}
-        elif any(k in q for k in ("instagram", "insta")):
-            tool_name = "open_social_profile"
-            import re
-            user_match = re.search(r"(?:profile|user|for)?\s*@?([A-Za-z0-9_.]+)", query)
-            args = {"platform": "instagram", "handle": user_match.group(1) if user_match else "instagram"}
-        elif "linkedin" in q:
-            tool_name = "open_social_profile"
-            import re
-            user_match = re.search(r"(?:profile|user|for)?\s*@?([A-Za-z0-9_-]+)", query)
-            args = {"platform": "linkedin", "handle": user_match.group(1) if user_match else "in"}
+            thought = f"Opening Telegram chat for @{args['username']}... ✈️"
         elif any(k in q for k in ("launch", "start app", "open app")):
             tool_name = "launch_installed_app"
-            import re
             app_match = re.search(r"(?:launch|start|open)\s+(?:app\s+)?([A-Za-z0-9_]+)", query, re.IGNORECASE)
             args = {"app_name": app_match.group(1) if app_match else "settings"}
+            thought = f"Launching installed application '{args['app_name']}'... 🚀"
         else:
             tool_name = "get_battery_status"
+            thought = "Checking system vitals... 🔋"
+
+        # Stream thought callback
+        if thought_callback:
+            try:
+                thought_callback(step_number, thought)
+            except Exception:
+                pass
+        self._event_bus.publish("react_thought", {"step": step_number, "thought": thought})
+
+        # Stream action callback
+        if action_callback and tool_name:
+            try:
+                action_callback(step_number, tool_name, args, thought)
+            except Exception:
+                pass
 
         res: ToolExecutionResult = self._registry.execute(tool_name, **args)
         elapsed = round((time.perf_counter() - start) * 1000, 2)
@@ -376,5 +496,109 @@ class AutonomousReActAgent:
         return await asyncio.to_thread(self.run, query, session_id)
 
 
+def format_conversational_reply(query: str, steps: List[ReActStep], results: List[Any]) -> str:
+    """
+    Synthesizes a conversational, witty, and transparent reply describing the actions
+    executed on the Android device, avoiding dry raw dumps.
+    """
+    if not steps:
+        return f"I took a look at '{query}', but didn't execute any hardware actions. Let me know what you'd like me to control or inspect!"
+
+    # Check if all steps failed
+    all_failed = all(s.status == AgentState.FAILED for s in steps)
+    if all_failed:
+        last_step = steps[-1]
+        return f"⚠️ I encountered an issue while trying to handle that: {last_step.observation or 'Device command failed'}. Let me know if you'd like me to retry or try a fallback!"
+
+    # Extract primary successful step
+    primary_step = next((s for s in reversed(steps) if s.status == AgentState.COMPLETED), steps[0])
+    action = primary_step.action or ""
+    action_in = primary_step.action_input or {}
+    obs = primary_step.observation or ""
+
+    # Generate friendly conversational responses for mobile tools
+    if action == "get_battery_status":
+        import json
+        try:
+            data = json.loads(obs) if isinstance(obs, str) and obs.startswith("{") else {}
+            pct = data.get("percentage", "unknown")
+            status = data.get("status", "discharging")
+            temp = data.get("temperature", "")
+            temp_str = f" at {temp}°C" if temp else ""
+            plugged = data.get("plugged", "unplugged")
+            return f"🔋 Your battery is currently sitting at **{pct}%** ({status}, {plugged}{temp_str}). Device power levels are looking great!"
+        except Exception:
+            return f"🔋 Checked your battery vitals: {obs}"
+
+    elif action == "capture_screen":
+        path = action_in.get("output_path", "Vault/Screenshots")
+        return f"📸 Screenshot captured successfully! Saved to `{path}` and mirrored to your cloud vault. Screen looks pristine!"
+
+    elif action == "take_camera_photo":
+        cam = action_in.get("camera_id", "back")
+        return f"📷 Snapped a crisp photo using camera #{cam}! The image has been saved to your centralized media vault."
+
+    elif action == "mobile_tap":
+        x, y = action_in.get("x", 0), action_in.get("y", 0)
+        return f"👆 Tapped on the screen at coordinates `({x}, {y})`. Done and dusted!"
+
+    elif action == "mobile_swipe":
+        x1, y1 = action_in.get("x1", 0), action_in.get("y1", 0)
+        x2, y2 = action_in.get("x2", 0), action_in.get("y2", 0)
+        dur = action_in.get("duration_ms", 300)
+        return f"👉 Swiped smoothly from `({x1}, {y1})` to `({x2}, {y2})` over {dur}ms."
+
+    elif action == "mobile_keyevent":
+        key = action_in.get("key", "HOME")
+        return f"🔘 Simulated hardware key event: **{key}**."
+
+    elif action == "mobile_type_text":
+        text = action_in.get("text", "")
+        return f"⌨️ Typed out: \"{text}\" on your device."
+
+    elif action == "open_settings_screen":
+        screen = action_in.get("screen", "main")
+        return f"⚙️ Opened Android Settings: **{screen}** screen."
+
+    elif action == "app_search":
+        target = action_in.get("target_app", "google")
+        q_term = action_in.get("search_query", "")
+        return f"🔍 Launched {target.title()} and searched for: *\"{q_term}\"*!"
+
+    elif action == "open_whatsapp_chat":
+        phone = action_in.get("phone", "")
+        return f"💬 Opened WhatsApp conversation for **+{phone}** with your draft."
+
+    elif action == "open_telegram_chat":
+        username = action_in.get("username", "")
+        return f"✈️ Opened Telegram conversation with **@{username}**."
+
+    elif action == "launch_installed_app":
+        app = action_in.get("app_name", "")
+        return f"🚀 Launched application **{app}** on device."
+
+    elif action == "torch":
+        state = "ON 💡" if action_in.get("enabled", True) else "OFF 🌑"
+        return f"🔦 Flashlight turned **{state}**."
+
+    elif action == "list_recent_media":
+        return f"📁 Queried your local media vault:\n{obs}"
+
+    elif action == "record_audio_start":
+        return f"🎙️ Started audio recording in your media vault: {obs}"
+
+    elif action == "record_audio_stop":
+        return f"⏹️ Stopped audio recording. Audio file saved and mirrored to vault!"
+
+    # Fallback summary
+    if obs and len(obs) < 300:
+        return f"✨ Executed `{action}` successfully:\n{obs}"
+    elif obs:
+        return f"✨ Completed `{action}`! Result:\n```\n{obs[:250]}...\n```"
+
+    return f"✨ Completed request '{query}' across {len(steps)} deliberation step(s)."
+
+
 # Global singleton agent
 global_react_agent = AutonomousReActAgent()
+

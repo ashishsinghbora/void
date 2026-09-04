@@ -150,3 +150,45 @@ class UserSettings:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass
+class VaultFile:
+    id: str
+    file_id: str
+    message_id: int
+    chat_id: int
+    file_type: str  # 'photo', 'document', 'audio', 'memory_snapshot', 'log'
+    tag: str        # 'camera_capture', 'session_backup', 'screenshot', 'audio_record'
+    filename: str
+    local_path: Optional[str] = None
+    size_bytes: int = 0
+    caption: Optional[str] = None
+    created_at: float = 0.0
+
+    def __post_init__(self):
+        if not self.created_at:
+            self.created_at = time.time()
+
+    @property
+    def file_name(self) -> str:
+        return self.filename
+
+    @property
+    def file_size(self) -> int:
+        return self.size_bytes
+
+    @property
+    def telegram_message_id(self) -> int:
+        return self.message_id
+
+    @property
+    def telegram_file_id(self) -> str:
+        return self.file_id
+
+    @property
+    def category(self) -> str:
+        return self.file_type or self.tag
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

@@ -21,6 +21,7 @@ from telegram.database.models import (
     Subscription,
     PaymentTransaction,
     UserSettings,
+    VaultFile,
 )
 
 logger = logging.getLogger("VoidTelegram.Database")
@@ -128,10 +129,32 @@ class BotDatabaseManager:
                     FOREIGN KEY (user_id) REFERENCES users(telegram_id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS vault_files (
+                    id TEXT PRIMARY KEY,
+                    file_id TEXT NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    file_type TEXT NOT NULL,
+                    tag TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    local_path TEXT,
+                    size_bytes INTEGER DEFAULT 0,
+                    caption TEXT,
+                    created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS vault_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
                 CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
                 CREATE INDEX IF NOT EXISTS idx_payments_user ON payment_transactions(user_id);
+                CREATE INDEX IF NOT EXISTS idx_vault_tag ON vault_files(tag);
+                CREATE INDEX IF NOT EXISTS idx_vault_type ON vault_files(file_type);
             """)
 
     # -------------------------------------------------------------------------
@@ -419,6 +442,121 @@ class BotDatabaseManager:
             expires_at=row["expires_at"],
             auto_renew=bool(row["auto_renew"]),
         )
+
+    # -------------------------------------------------------------------------
+    # Cloud Storage & Memory Vault Operations
+    # -------------------------------------------------------------------------
+    def record_vault_file(self, vf: Optional[VaultFile] = None, **kwargs) -> Any:
+        """Stores indexed metadata for a file persisted in the Telegram group vault."""
+        if vf is None:
+            import uuid
+            vf_id = kwargs.get("id") or f"vf_{uuid.uuid4().hex[:12]}"
+            vf = VaultFile(
+                id=vf_id,
+                file_id=kwargs.get("telegram_file_id") or kwargs.get("file_id") or "doc_unknown",
+                message_id=int(kwargs.get("telegram_message_id") or kwargs.get("message_id") or 0),
+                chat_id=int(kwargs.get("group_id") or kwargs.get("chat_id") or 0),
+                file_type=kwargs.get("file_type") or kwargs.get("category") or "document",
+                tag=kwargs.get("tag") or kwargs.get("category") or "general",
+                filename=kwargs.get("file_name") or kwargs.get("filename") or "file.bin",
+                local_path=kwargs.get("file_path") or kwargs.get("local_path"),
+                size_bytes=int(kwargs.get("file_size") or kwargs.get("size_bytes") or 0),
+                caption=kwargs.get("caption"),
+                created_at=kwargs.get("created_at") or time.time(),
+            )
+        conn = self._get_connection()
+        with self._lock:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO vault_files (id, file_id, message_id, chat_id, file_type, tag, filename, local_path, size_bytes, caption, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (vf.id, vf.file_id, vf.message_id, vf.chat_id, vf.file_type, vf.tag, vf.filename, vf.local_path, vf.size_bytes, vf.caption, vf.created_at),
+            )
+            conn.commit()
+            return cur.lastrowid or 1
+
+    def get_vault_file(self, file_id: str) -> Optional[VaultFile]:
+        conn = self._get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM vault_files WHERE file_id = ? OR id = ?", (file_id, file_id))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return VaultFile(
+            id=r["id"],
+            file_id=r["file_id"],
+            message_id=r["message_id"],
+            chat_id=r["chat_id"],
+            file_type=r["file_type"],
+            tag=r["tag"],
+            filename=r["filename"],
+            local_path=r["local_path"],
+            size_bytes=r["size_bytes"],
+            caption=r["caption"],
+            created_at=r["created_at"],
+        )
+
+    def query_vault_files(
+        self,
+        tag: Optional[str] = None,
+        file_type: Optional[str] = None,
+        category: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[VaultFile]:
+        conn = self._get_connection()
+        cur = conn.cursor()
+        query = "SELECT * FROM vault_files WHERE 1=1"
+        params = []
+        if category:
+            query += " AND (tag = ? OR file_type = ?)"
+            params.extend([category, category])
+        if tag:
+            query += " AND tag = ?"
+            params.append(tag)
+        if file_type:
+            query += " AND file_type = ?"
+            params.append(file_type)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        cur.execute(query, tuple(params))
+        results = []
+        for r in cur.fetchall():
+            results.append(
+                VaultFile(
+                    id=r["id"],
+                    file_id=r["file_id"],
+                    message_id=r["message_id"],
+                    chat_id=r["chat_id"],
+                    file_type=r["file_type"],
+                    tag=r["tag"],
+                    filename=r["filename"],
+                    local_path=r["local_path"],
+                    size_bytes=r["size_bytes"],
+                    caption=r["caption"],
+                    created_at=r["created_at"],
+                )
+            )
+        return results
+
+    def set_vault_config(self, key: str, value: str) -> None:
+        conn = self._get_connection()
+        with self._lock:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR REPLACE INTO vault_config (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, str(value), time.time()),
+            )
+            conn.commit()
+
+    def get_vault_config(self, key: str) -> Optional[str]:
+        conn = self._get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM vault_config WHERE key = ?", (key,))
+        row = cur.fetchone()
+        return row["value"] if row else None
 
 
 global_bot_db = BotDatabaseManager()

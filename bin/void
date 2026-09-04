@@ -59,6 +59,8 @@ show_help() {
     echo -e "  ${C_CYAN}cli${C_RESET}                Launch interactive ReAct TUI session (default)"
     echo -e "  ${C_CYAN}fastfetch${C_RESET}          Display visual ASCII/Unicode system & edge telemetry"
     echo -e "  ${C_CYAN}setup-bot${C_RESET}          Run interactive Telegram bot wizard with Admin ID auto-detection"
+    echo -e "  ${C_CYAN}setup-model${C_RESET}        Run interactive local LLM setup wizard with RAM detection"
+    echo -e "  ${C_CYAN}vault${C_RESET}              Manage Telegram group cloud memory & media vault"
     echo -e "  ${C_CYAN}plugins${C_RESET}            Manage dynamic extensions (list, search, install, remove)"
     echo -e "  ${C_CYAN}models${C_RESET}             List installed local small-model weights & catalog"
     echo -e "  ${C_CYAN}start${C_RESET}              Start background daemons & Telegram bot (foreground)"
@@ -177,6 +179,50 @@ for mid, m in available.items():
     print(f'   {m[\"description\"]}')
 print('=' * 60)
 "
+}
+
+cmd_setup_model() {
+    cd "$VOID_DIR"
+    exec "$PYTHON_BIN" -c "from core.model_manager import global_model_manager; global_model_manager.run_interactive_wizard()"
+}
+
+cmd_vault() {
+    cd "$VOID_DIR"
+    "$PYTHON_BIN" -c "
+import sys
+from telegram.services.cloud_vault import global_cloud_vault
+args = sys.argv[1:]
+if not args or args[0] in ('status', 'info'):
+    info = global_cloud_vault.get_vault_telemetry()
+    print('=' * 60)
+    print(' ☁️ VOID TELEGRAM CLOUD STORAGE VAULT')
+    print('=' * 60)
+    print(f' Configured:  {info.get(\"configured\")}')
+    print(f' Group Title: {info.get(\"group_title\")}')
+    print(f' Group ID:    {info.get(\"group_id\")}')
+    print(f' Total Files: {info.get(\"total_files\", 0)}')
+    print(f' Stored Size: {round(info.get(\"bytes_stored\", 0)/(1024*1024), 2)} MB')
+    print(f' Last Upload: {info.get(\"last_upload_iso\")}')
+    print('=' * 60)
+elif args[0] in ('backup', 'sync'):
+    print('[INFO] Backing up memory snapshot to vault...')
+    res = global_cloud_vault.upload_memory_snapshot()
+    if res.get('success'):
+        print(f'✅ Vault backup uploaded! Message #{res.get(\"telegram_message_id\")}')
+    else:
+        print(f'❌ Backup failed: {res.get(\"error\")}')
+elif args[0] in ('files', 'list'):
+    records = global_cloud_vault.query_vault(limit=10)
+    print('Stored Vault Records:')
+    for r in records:
+        print(f' • #{r.id} {r.file_name} ({round(r.file_size/1024, 1)} KB) [{r.category}] Msg #{r.telegram_message_id}')
+elif args[0] == 'set' and len(args) > 1:
+    cid = int(args[1])
+    global_cloud_vault.set_vault_group_id(cid, group_title='Configured via CLI')
+    print(f'✅ Vault group ID set to {cid}')
+else:
+    print('Usage: void vault [status|backup|files|set <group_id>]')
+" "$@"
 }
 
 cmd_start() {
@@ -324,6 +370,12 @@ case "$SUBCMD" in
         ;;
     setup-bot|setup|bot-setup)
         cmd_setup_bot "$@"
+        ;;
+    setup-model|model-setup|wizard)
+        cmd_setup_model "$@"
+        ;;
+    vault|cloud-vault)
+        cmd_vault "$@"
         ;;
     plugins|plugin)
         cmd_plugins "$@"

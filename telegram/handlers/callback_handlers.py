@@ -19,8 +19,11 @@ from telegram.database.db_manager import global_bot_db
 from telegram.database.models import UserTier
 from telegram.services.device_service import global_device_service
 from telegram.services.payment_service import global_payment_service
+from telegram.services.cloud_vault import global_cloud_vault
 from telegram.handlers.settings_handlers import render_settings_card, get_settings_keyboard
 from telegram.handlers.billing_handlers import render_billing_card, get_billing_keyboard, dispatch_invoice
+from telegram.handlers.vault_handlers import render_vault_status_card, get_vault_keyboard
+from telegram.handlers.model_handlers import render_model_setup_card, get_model_setup_keyboard
 
 logger = logging.getLogger("VoidTelegram.CallbackHandlers")
 
@@ -72,6 +75,67 @@ def register_callback_handlers(bot: Any, controller: Any) -> None:
         elif data == "cb_photo":
             bot.answer_callback_query(call.id, "Capturing photo...")
             controller._execute_photo_capture(chat_id)
+
+        elif data == "cb_screenshot":
+            bot.answer_callback_query(call.id, "Capturing screenshot...")
+            if hasattr(controller, "_execute_screenshot_capture"):
+                controller._execute_screenshot_capture(chat_id)
+            else:
+                global_tool_registry.execute("capture_screen")
+                bot.send_message(chat_id, "📸 Screenshot captured!", parse_mode="Markdown")
+
+        elif data in ("cb_vault", "cb_vault_status"):
+            bot.answer_callback_query(call.id)
+            card = render_vault_status_card()
+            is_conf = global_cloud_vault.is_configured()
+            try:
+                bot.edit_message_text(
+                    card,
+                    chat_id,
+                    message_id,
+                    reply_markup=get_vault_keyboard(is_conf),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                bot.send_message(chat_id, card, reply_markup=get_vault_keyboard(is_conf), parse_mode="Markdown")
+
+        elif data == "cb_vault_backup":
+            bot.answer_callback_query(call.id, "Initiating memory backup to vault...")
+            if not global_cloud_vault.is_configured():
+                bot.send_message(chat_id, "⚠️ Vault not configured. Add bot to a group as Admin or run `/set_vault <id>`.", parse_mode="Markdown")
+            else:
+                res = global_cloud_vault.upload_memory_snapshot()
+                if res.get("success"):
+                    bot.send_message(chat_id, f"✅ *Memory snapshot backed up to Cloud Vault!* (Msg #{res.get('telegram_message_id')})", parse_mode="Markdown")
+                else:
+                    bot.send_message(chat_id, f"❌ Backup failed: {res.get('error')}", parse_mode="Markdown")
+
+        elif data == "cb_vault_files":
+            bot.answer_callback_query(call.id)
+            records = global_cloud_vault.query_vault(limit=8)
+            if not records:
+                bot.send_message(chat_id, "📁 *No vault files recorded yet.*", parse_mode="Markdown")
+            else:
+                lines = ["📁 *Recent Cloud Vault Files:*\n"]
+                for r in records:
+                    ts = r.created_at[:16].replace("T", " ")
+                    mb = round(r.file_size / (1024 * 1024), 2)
+                    lines.append(f"• `#{r.id}` *{r.file_name}* ({mb} MB) | `{r.category}` | Msg `#{r.telegram_message_id}`")
+                bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown")
+
+        elif data == "cb_model_wizard":
+            bot.answer_callback_query(call.id)
+            card = render_model_setup_card()
+            try:
+                bot.edit_message_text(
+                    card,
+                    chat_id,
+                    message_id,
+                    reply_markup=get_model_setup_keyboard(),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                bot.send_message(chat_id, card, reply_markup=get_model_setup_keyboard(), parse_mode="Markdown")
 
         elif data == "cb_clean":
             bot.answer_callback_query(call.id, "Cleaning temporary cache...")

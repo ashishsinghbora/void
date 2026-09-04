@@ -55,19 +55,23 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         tier_badge = f"[{user.tier.value}]"
         text = (
             f"⚡ *Void Edge Agent Remote Control Hub* {tier_badge}\n\n"
-            "Autonomous terminal & Telegram control plane for Android / Termux.\n\n"
-            "• *Instant Hardware Commands:*\n"
-            "  _\"turn on flashlight\"_, _\"battery status\"_, _\"clean cache\"_, _\"whatsapp 1555000 hello\"_\n\n"
-            "• *Command Navigation:*\n"
+            "Autonomous conversational agent for Android / Termux with Cloud Vault.\n\n"
+            "• *Instant Natural Language Actions:*\n"
+            "  _\"turn on flashlight\"_, _\"swipe up\"_, _\"open settings\"_, _\"search lo-fi beats on youtube\"_\n\n"
+            "• *Mobile Touch & Screen Controls:*\n"
+            "  • `/tap <x> <y>` - Touch coordinate simulation\n"
+            "  • `/swipe <x1> <y1> <x2> <y2>` - Screen swipe gesture\n"
+            "  • `/type <text>` - Keyboard typing input\n"
+            "  • `/key <HOME|BACK|RECENTS>` - Physical button keyevent\n"
+            "  • `/screenshot` - Instant screen capture\n"
+            "  • `/search <app> <query>` - In-app deep query\n\n"
+            "• *Cloud Vault & Intelligence:*\n"
+            "  • `/vault` - Persistent Telegram group memory & media vault\n"
+            "  • `/setup_model` - Device RAM detector & GGUF model setup\n"
             "  • `/fastfetch` - ASCII system & hardware telemetry\n"
-            "  • `/status` - Live RAM, active daemons & tier\n"
-            "  • `/devices` - Connected Android edge nodes\n"
-            "  • `/extensions` - On-demand dynamic plugin manager\n"
-            "  • `/billing` - Telegram Stars subscriptions & upgrades\n"
-            "  • `/settings` - Security, quiet hours & notifications\n"
-            "  • `/models` - Edge quantized LLMs catalog\n"
-            "  • `/photo` - Capture camera photo directly\n"
-            "  • `/logs` - Audit hardware action logs\n\n"
+            "  • `/status` - Live memory footprint & daemon status\n"
+            "  • `/extensions` - On-demand plugin manager\n"
+            "  • `/billing` - Telegram Stars subscriptions & upgrades\n\n"
             "👇 *Select an action from the dashboard below:*"
         )
         bot.reply_to(message, text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
@@ -265,7 +269,104 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         bot.reply_to(message, f"🧹 *Storage Clean Complete:*\n`{summary}`", parse_mode="Markdown")
 
     # ----------------------------------------------------------------------
-    # Generic Natural Language Query Handler
+    # Mobile Action Direct Commands
+    # ----------------------------------------------------------------------
+    @bot.message_handler(commands=["tap"])
+    def handle_tap(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split()
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Usage: `/tap <x> <y>` (e.g. `/tap 500 1000`)", parse_mode="Markdown")
+            return
+        try:
+            x, y = int(parts[1]), int(parts[2])
+            res = global_tool_registry.execute("mobile_tap", x=x, y=y)
+            bot.reply_to(message, f"👆 {res.output if res.success else res.error}", parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"❌ Tap failed: {e}")
+
+    @bot.message_handler(commands=["swipe"])
+    def handle_swipe(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split()
+        if len(parts) < 5:
+            bot.reply_to(message, "⚠️ Usage: `/swipe <x1> <y1> <x2> <y2> [duration_ms]`\nExample: `/swipe 500 1500 500 500 300`", parse_mode="Markdown")
+            return
+        try:
+            x1, y1, x2, y2 = int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+            dur = int(parts[5]) if len(parts) > 5 else 300
+            res = global_tool_registry.execute("mobile_swipe", x1=x1, y1=y1, x2=x2, y2=y2, duration_ms=dur)
+            bot.reply_to(message, f"👉 {res.output if res.success else res.error}", parse_mode="Markdown")
+        except Exception as e:
+            bot.reply_to(message, f"❌ Swipe failed: {e}")
+
+    @bot.message_handler(commands=["type", "input"])
+    def handle_type(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            bot.reply_to(message, "⚠️ Usage: `/type <text to type>`", parse_mode="Markdown")
+            return
+        text_to_type = parts[1]
+        res = global_tool_registry.execute("mobile_type_text", text=text_to_type)
+        bot.reply_to(message, f"⌨️ {res.output if res.success else res.error}", parse_mode="Markdown")
+
+    @bot.message_handler(commands=["key", "keyevent"])
+    def handle_keyevent(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split()
+        if len(parts) < 2:
+            bot.reply_to(message, "⚠️ Usage: `/key <HOME|BACK|RECENTS|ENTER|POWER|VOLUME_UP|VOLUME_DOWN>`", parse_mode="Markdown")
+            return
+        key_name = parts[1].upper()
+        res = global_tool_registry.execute("mobile_keyevent", key=key_name)
+        bot.reply_to(message, f"🔘 {res.output if res.success else res.error}", parse_mode="Markdown")
+
+    @bot.message_handler(commands=["screenshot", "screen"])
+    def handle_screenshot(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        if hasattr(controller, "_execute_screenshot_capture"):
+            controller._execute_screenshot_capture(message.chat.id)
+        else:
+            res = global_tool_registry.execute("capture_screen")
+            bot.reply_to(message, f"📸 {res.output if res.success else res.error}", parse_mode="Markdown")
+
+    @bot.message_handler(commands=["search"])
+    def handle_search(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Usage: `/search <youtube|maps|google|playstore> <query>`\nExample: `/search youtube lo-fi beats`", parse_mode="Markdown")
+            return
+        target_app = parts[1].lower()
+        search_query = parts[2]
+        res = global_tool_registry.execute("app_search", target_app=target_app, search_query=search_query)
+        bot.reply_to(message, f"🔍 {res.output if res.success else res.error}", parse_mode="Markdown")
+
+    @bot.message_handler(commands=["settings_open"])
+    def handle_settings_open(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split()
+        screen = parts[1].lower() if len(parts) > 1 else "main"
+        res = global_tool_registry.execute("open_settings_screen", screen=screen)
+        bot.reply_to(message, f"⚙️ {res.output if res.success else res.error}", parse_mode="Markdown")
+
+    # ----------------------------------------------------------------------
+    # Generic Natural Language Query Handler with Streaming Reasoning
     # ----------------------------------------------------------------------
     @bot.message_handler(func=lambda message: True)
     def handle_generic_query(message):
@@ -295,29 +396,44 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         if not query:
             return
 
+        status_msg = bot.reply_to(message, "🧠 *Deliberating...* Analyzing your request.", parse_mode="Markdown")
+        last_thought_edit = [0.0]
+
+        def thought_cb(step_num: int, thought_text: str):
+            now = time.perf_counter()
+            if now - last_thought_edit[0] >= 1.2:
+                try:
+                    bot.edit_message_text(
+                        f"🧠 *Deliberating (Step {step_num})...*\n💭 _{thought_text}_",
+                        message.chat.id,
+                        status_msg.message_id,
+                        parse_mode="Markdown",
+                    )
+                    last_thought_edit[0] = now
+                except Exception:
+                    pass
+
         try:
             session_id = f"telegram_{user_id}"
-            response = global_react_agent.run(query, session_id=session_id)
+            response = global_react_agent.run(
+                query,
+                session_id=session_id,
+                thought_callback=thought_cb,
+            )
 
-            reply_parts = []
-            if response.results:
-                reply_parts.append("⚡ *Tool Execution Results:*")
-                for r in response.results:
-                    if isinstance(r, dict):
-                        reply_parts.append(f"```json\n{json.dumps(r, indent=2)}\n```")
-                    else:
-                        reply_parts.append(f"• `{r}`")
-            else:
-                reply_parts.append("⚠️ *No tools triggered by query.*")
+            # Cleanup initial status message
+            try:
+                bot.delete_message(message.chat.id, status_msg.message_id)
+            except Exception:
+                pass
 
-            if response.reasoning:
-                reply_parts.append(f"\n🧠 *Agent Reasoning:*\n_{response.reasoning}_")
-
-            if response.confidence is not None:
-                reply_parts.append(f"🎯 *Confidence:* {int(response.confidence * 100)}%")
-
-            bot.reply_to(message, "\n".join(reply_parts), reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
+            # Deliver conversational, talkative reply
+            reply_text = response.conversational_reply or f"✨ *Task Completed:*\n{response.reasoning}"
+            bot.reply_to(message, reply_text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
 
         except Exception as e:
             logger.error(f"Telegram processing error: {e}")
-            bot.reply_to(message, f"❌ *Error executing command:*\n`{str(e)}`", parse_mode="Markdown")
+            try:
+                bot.edit_message_text(f"❌ *Error executing command:*\n`{str(e)}`", message.chat.id, status_msg.message_id, parse_mode="Markdown")
+            except Exception:
+                bot.reply_to(message, f"❌ *Error executing command:*\n`{str(e)}`", parse_mode="Markdown")

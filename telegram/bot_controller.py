@@ -112,16 +112,18 @@ class AuthenticatedTelegramController:
         btn_torch = types.InlineKeyboardButton(torch_label, callback_data="cb_torch")
         btn_bat = types.InlineKeyboardButton("🔋 Battery Meter", callback_data="cb_battery")
         btn_photo = types.InlineKeyboardButton("📸 Take Photo", callback_data="cb_photo")
+        btn_screen = types.InlineKeyboardButton("📱 Screenshot", callback_data="cb_screenshot")
         btn_clean = types.InlineKeyboardButton("🧹 Clean Storage", callback_data="cb_clean")
         btn_fetch = types.InlineKeyboardButton("⚡ FastFetch", callback_data="cb_fastfetch")
         btn_logs = types.InlineKeyboardButton("📋 Audit Logs", callback_data="cb_logs")
-        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
         btn_sec = types.InlineKeyboardButton("🛡️ Security Hub", callback_data="cb_security")
+        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
         btn_devices = types.InlineKeyboardButton("📱 Edge Devices", callback_data="cb_devices")
+        btn_vault = types.InlineKeyboardButton("☁️ Cloud Vault", callback_data="cb_vault")
+        btn_wizard = types.InlineKeyboardButton("🧙 Model Setup", callback_data="cb_model_wizard")
+        btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
         btn_billing = types.InlineKeyboardButton("💎 Subscriptions", callback_data="cb_billing")
         btn_settings = types.InlineKeyboardButton("⚙️ Settings", callback_data="cb_settings")
-        btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
-        btn_models = types.InlineKeyboardButton("🧠 Model Status", callback_data="cb_models")
 
         webapp_url = os.environ.get("VOID_WEBAPP_URL", "")
         if webapp_url:
@@ -129,11 +131,12 @@ class AuthenticatedTelegramController:
             markup.add(btn_tma)
 
         markup.add(btn_torch, btn_bat)
-        markup.add(btn_photo, btn_clean)
-        markup.add(btn_fetch, btn_logs)
-        markup.add(btn_plugins, btn_sec)
-        markup.add(btn_devices, btn_billing)
-        markup.add(btn_apps, btn_models)
+        markup.add(btn_photo, btn_screen)
+        markup.add(btn_clean, btn_fetch)
+        markup.add(btn_logs, btn_sec)
+        markup.add(btn_plugins, btn_devices)
+        markup.add(btn_vault, btn_wizard)
+        markup.add(btn_apps, btn_billing)
         markup.add(btn_settings)
         markup.add(types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="cb_back_main"))
         return markup
@@ -247,6 +250,16 @@ class AuthenticatedTelegramController:
                             parse_mode="Markdown"
                         )
                     photo_sent = True
+                    try:
+                        from telegram.services.cloud_vault import global_cloud_vault
+                        if global_cloud_vault.is_configured():
+                            global_cloud_vault.upload_file(
+                                file_path=p,
+                                category="camera",
+                                caption="Void Camera Capture",
+                            )
+                    except Exception as ve:
+                        logger.debug(f"Vault auto-mirror skipped: {ve}")
                     break
                 except Exception as e:
                     logger.warning(f"Failed to send photo from {p}: {e}")
@@ -262,6 +275,63 @@ class AuthenticatedTelegramController:
                 f"📸 *Camera Output:*\n`{res.output or res.error}`",
                 parse_mode="Markdown"
             )
+
+    def _execute_screenshot_capture(self, chat_id: int) -> None:
+        """Captures device screen and dispatches photo directly to Telegram."""
+        bot = self._bot
+        if not bot:
+            return
+
+        status_msg = bot.send_message(chat_id, "📸 *Capturing device screen...*", parse_mode="Markdown")
+        res = global_tool_registry.execute("capture_screen")
+
+        screenshot_path = None
+        if res.output and isinstance(res.output, str):
+            import re
+            m = re.search(r"'(.*?)'", res.output)
+            if m and os.path.exists(m.group(1)):
+                screenshot_path = m.group(1)
+
+        if not screenshot_path or not os.path.exists(screenshot_path):
+            try:
+                from core.media_vault import global_media_vault
+                recent = global_media_vault.list_recent_media(category="screenshots", limit=1)
+                if recent:
+                    screenshot_path = recent[0]["path"]
+            except Exception:
+                pass
+
+        shot_sent = False
+        if screenshot_path and os.path.exists(screenshot_path):
+            try:
+                with open(screenshot_path, "rb") as shot_file:
+                    bot.send_photo(
+                        chat_id,
+                        shot_file,
+                        caption=f"📸 *Void Screen Capture*\nSaved at: `{screenshot_path}`",
+                        parse_mode="Markdown",
+                    )
+                shot_sent = True
+                try:
+                    from telegram.services.cloud_vault import global_cloud_vault
+                    if global_cloud_vault.is_configured():
+                        global_cloud_vault.upload_file(
+                            file_path=screenshot_path,
+                            category="screenshots",
+                            caption="Automated screenshot capture",
+                        )
+                except Exception as ve:
+                    logger.debug(f"Vault auto-mirror skipped: {ve}")
+            except Exception as e:
+                logger.warning(f"Failed to dispatch screenshot: {e}")
+
+        try:
+            bot.delete_message(chat_id, status_msg.message_id)
+        except Exception:
+            pass
+
+        if not shot_sent:
+            bot.send_message(chat_id, f"📸 *Screen Capture Output:*\n`{res.output or res.error}`", parse_mode="Markdown")
 
     def start_polling(self) -> None:
         """Runs the single-threaded robust polling loop with reconnection retry."""

@@ -53,6 +53,15 @@ from tools.social_apps import (
     OpenSocialProfileStrategy,
     LaunchInstalledAppStrategy,
 )
+from tools.mobile_actions import (
+    MobileTapStrategy,
+    MobileSwipeStrategy,
+    MobileKeyEventStrategy,
+    MobileTypeTextStrategy,
+    OpenSettingsScreenStrategy,
+    AppSearchStrategy,
+    CaptureScreenStrategy,
+)
 
 logger = logging.getLogger("VoidAdvancedCore.Registry")
 
@@ -107,9 +116,22 @@ class ToolRegistry:
             OpenSocialProfileStrategy(),
             LaunchInstalledAppStrategy(),
             CleanStorageStrategy(),
+            MobileTapStrategy(),
+            MobileSwipeStrategy(),
+            MobileKeyEventStrategy(),
+            MobileTypeTextStrategy(),
+            OpenSettingsScreenStrategy(),
+            AppSearchStrategy(),
+            CaptureScreenStrategy(),
         ]
         for s in strategies:
             self.register(s)
+
+        # Register compatibility aliases
+        if "capture_screen" in self._tools:
+            self._tools["capture_screenshot"] = self._tools["capture_screen"]
+        if "app_search" in self._tools:
+            self._tools["search_app_content"] = self._tools["app_search"]
 
     def register(self, strategy: ToolStrategy) -> None:
         """Registers a new strategy into the hash table."""
@@ -119,6 +141,13 @@ class ToolRegistry:
     def unregister(self, name: str) -> None:
         """Removes a strategy from registry."""
         self._tools.pop(name, None)
+
+    def has_tool(self, name: str) -> bool:
+        """Returns True if the specified strategy is registered."""
+        return name in self._tools
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._tools
 
     def get(self, name: str) -> Optional[ToolStrategy]:
         """O(1) hash table lookup."""

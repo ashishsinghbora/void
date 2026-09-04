@@ -241,11 +241,21 @@ def render_telemetry_widget(vw: int):
     bot_token = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
     bot_str = f"{C_GREEN}@voidtermuxbot{C_RESET}" if bot_token else f"{C_DIM}Offline{C_RESET}"
 
+    vault_str = f"{C_DIM}Not Linked{C_RESET}"
+    try:
+        from telegram.services.cloud_vault import global_cloud_vault
+        v_tele = global_cloud_vault.get_vault_telemetry()
+        if v_tele.get("configured"):
+            vault_str = f"{C_GREEN}Active ({v_tele.get('total_files', 0)} files){C_RESET}"
+    except Exception:
+        pass
+
     print(render_card_top("LIVE TELEMETRY & RESOURCES", vw, C_BLUE, C_BOLD + C_BLUE))
     print(render_card_line(f"💾 RAM RSS:    {rss_color}{rss_mb} MB{C_RESET} {C_DIM}(<30MB target){C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🔋 Battery:    {C_YELLOW}{bat_str}{C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🗄️ Database:   {C_CYAN}{db_stats}{C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🧠 Engine:     {C_PURPLE}{engine[:24]}{C_RESET}", vw, C_BLUE))
+    print(render_card_line(f"☁️ Vault:      {vault_str}", vw, C_BLUE))
     print(render_card_line(f"🤖 Bot Plane:  {bot_str}", vw, C_BLUE))
     print(render_card_bottom(vw, C_BLUE))
 
@@ -263,9 +273,10 @@ def render_quick_actions_menu(vw: int, torch_on: bool = False):
     print(render_card_line(f"{C_BOLD}[5]{C_RESET} 🧩 Extensions  {C_BOLD}[6]{C_RESET} 🧹 Clean Disk", vw, C_PURPLE))
     print(render_card_line(f"{C_BOLD}[7]{C_RESET} 📋 Audit Logs  {C_BOLD}[8]{C_RESET} 🛡️ Security", vw, C_PURPLE))
     print(render_card_line(f"{C_BOLD}[9]{C_RESET} 🧠 Local LLMs  {C_BOLD}[0]{C_RESET} 🤖 Bot Hub", vw, C_PURPLE))
-    print(render_card_line(f"{C_BOLD}[?]{C_RESET} 📖 Help Guide  {C_BOLD}[Q]{C_RESET} 🚪 Exit App", vw, C_PURPLE))
+    print(render_card_line(f"{C_BOLD}[V]{C_RESET} ☁️ Cloud Vault {C_BOLD}[W]{C_RESET} 🧙 LLM Wizard", vw, C_PURPLE))
+    print(render_card_line(f"{C_BOLD}[S]{C_RESET} 📱 Screenshot  {C_BOLD}[Q]{C_RESET} 🚪 Exit App", vw, C_PURPLE))
     print(render_card_bottom(vw, C_PURPLE))
-    print(f"{C_DIM}Tip: Enter [1-0] or type any natural language directive:{C_RESET}\n")
+    print(f"{C_DIM}Tip: Enter [1-0, V, W, S] or type any natural language directive:{C_RESET}\n")
 
 
 def print_help_screen(vw: int):
@@ -282,7 +293,10 @@ def print_help_screen(vw: int):
         ("/logs", "Inspect hardware audit logs"),
         ("/security", "View sessions & cipher status"),
         ("/models", "Manage local small models"),
+        ("/wizard", "Interactive LLM selection wizard"),
         ("/download <id>", "Download small model weights"),
+        ("/vault", "Manage cloud memory vault"),
+        ("/screenshot", "Capture Android screen"),
         ("/bot", "Telegram bot control & setup"),
         ("/clear", "Clear screen"),
         ("/exit, q", "Exit session"),
@@ -513,6 +527,64 @@ def screen_models(vw: int):
             time.sleep(1.5)
 
 
+def screen_vault(vw: int):
+    """Interactive screen for Telegram Cloud Vault management."""
+    from telegram.services.cloud_vault import global_cloud_vault
+    while True:
+        info = global_cloud_vault.get_vault_telemetry()
+        configured = info.get("configured", False)
+        title = info.get("group_title") or "Void Vault Group"
+        gid = info.get("group_id") or "Not Linked"
+        f_count = info.get("total_files", 0)
+        mb = round(info.get("bytes_stored", 0) / (1024 * 1024), 2)
+
+        print(f"\n{render_card_top('CLOUD VAULT (BRAIN-IN-CLOUD)', vw, C_BLUE, C_BOLD + C_BLUE)}")
+        print(render_card_line(f"Status:      {'🟢 Active' if configured else '🔴 Inactive'}", vw, C_BLUE))
+        print(render_card_line(f"Group:       {title[:24]}", vw, C_BLUE))
+        print(render_card_line(f"Chat ID:     {str(gid)[:24]}", vw, C_BLUE))
+        print(render_card_line(f"Stored:      {f_count} files ({mb} MB)", vw, C_BLUE))
+        print(render_card_sep(vw, C_BLUE))
+        print(render_card_line(f"{C_BOLD}[1]{C_RESET} 💾 Backup Memory State Now", vw, C_BLUE))
+        print(render_card_line(f"{C_BOLD}[2]{C_RESET} 📁 View Recent Vault Files", vw, C_BLUE))
+        print(render_card_line(f"{C_BOLD}[3]{C_RESET} ⚙️ Set Vault Group Chat ID", vw, C_BLUE))
+        print(render_card_line(f"{C_BOLD}[B]{C_RESET} 🔙 Back to Main Menu", vw, C_BLUE))
+        print(render_card_bottom(vw, C_BLUE))
+
+        try:
+            choice = input(f"{C_CYAN}vault ❯ {C_RESET}").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            break
+
+        if choice in ("b", "back", "q", "exit"):
+            break
+        elif choice == "1":
+            print(f"{C_CYAN}[INFO] Backing up memory state to vault...{C_RESET}")
+            res = global_cloud_vault.upload_memory_snapshot()
+            if res.get("success"):
+                print(f"{C_GREEN}✅ Memory snapshot backed up to vault! (Msg #{res.get('telegram_message_id')}){C_RESET}")
+            else:
+                print(f"{C_RED}❌ Backup failed: {res.get('error')}{C_RESET}")
+            time.sleep(1.5)
+        elif choice == "2":
+            records = global_cloud_vault.query_vault(limit=5)
+            if not records:
+                print(f"{C_DIM}No files stored in vault yet.{C_RESET}")
+            else:
+                print(f"{C_BOLD}Recent Vault Files:{C_RESET}")
+                for r in records:
+                    print(f"• #{r.id} {r.file_name} ({round(r.file_size/1024, 1)}KB) [{r.category}]")
+            input(f"{C_DIM}Press Enter to continue...{C_RESET}")
+        elif choice == "3":
+            raw = input("Enter Telegram Group Chat ID (e.g. -1001234567890): ").strip()
+            try:
+                cid = int(raw)
+                global_cloud_vault.set_vault_group_id(cid, group_title="Configured from CLI")
+                print(f"{C_GREEN}✅ Vault group ID set to {cid}{C_RESET}")
+            except ValueError:
+                print(f"{C_RED}Invalid integer chat ID.{C_RESET}")
+            time.sleep(1.5)
+
+
 def format_step_cards(steps, vw: int):
     """Renders execution steps as stacked mobile cards without horizontal wrapping."""
     if not steps:
@@ -632,6 +704,20 @@ def main():
                 screen_bot_control(vw)
                 continue
 
+            elif query.lower() in ("v", "vault"):
+                screen_vault(vw)
+                continue
+
+            elif query.lower() in ("w", "wizard"):
+                global_model_manager.run_interactive_wizard()
+                continue
+
+            elif query.lower() in ("s", "screenshot"):
+                print(f"{C_CYAN}📸 Capturing device screen...{C_RESET}")
+                res = global_tool_registry.execute("capture_screen")
+                print(f"📸 {res.output if res.success else res.error}")
+                continue
+
             # ------------------------------------------------------------------
             # Slash Commands Handling
             # ------------------------------------------------------------------
@@ -655,6 +741,39 @@ def main():
                 elif cmd in ("photo", "camera"):
                     res = global_tool_registry.execute("take_camera_photo")
                     print(f"📸 {res.output or res.error}")
+                elif cmd in ("screenshot", "screen"):
+                    print(f"{C_CYAN}📸 Capturing device screen...{C_RESET}")
+                    res = global_tool_registry.execute("capture_screen")
+                    print(f"📸 {res.output if res.success else res.error}")
+                elif cmd in ("vault", "cloud"):
+                    screen_vault(vw)
+                elif cmd in ("wizard", "setup_model"):
+                    global_model_manager.run_interactive_wizard()
+                elif cmd == "tap":
+                    if len(cmd_args) >= 2:
+                        res = global_tool_registry.execute("mobile_tap", x=int(cmd_args[0]), y=int(cmd_args[1]))
+                        print(f"👆 {res.output if res.success else res.error}")
+                    else:
+                        print(f"{C_RED}Usage: /tap <x> <y>{C_RESET}")
+                elif cmd == "swipe":
+                    if len(cmd_args) >= 4:
+                        dur = int(cmd_args[4]) if len(cmd_args) > 4 else 300
+                        res = global_tool_registry.execute("mobile_swipe", x1=int(cmd_args[0]), y1=int(cmd_args[1]), x2=int(cmd_args[2]), y2=int(cmd_args[3]), duration_ms=dur)
+                        print(f"👉 {res.output if res.success else res.error}")
+                    else:
+                        print(f"{C_RED}Usage: /swipe <x1> <y1> <x2> <y2> [duration]{C_RESET}")
+                elif cmd in ("type", "input"):
+                    if cmd_args:
+                        res = global_tool_registry.execute("mobile_type_text", text=" ".join(cmd_args))
+                        print(f"⌨️ {res.output if res.success else res.error}")
+                    else:
+                        print(f"{C_RED}Usage: /type <text>{C_RESET}")
+                elif cmd in ("key", "keyevent"):
+                    if cmd_args:
+                        res = global_tool_registry.execute("mobile_keyevent", key=cmd_args[0].upper())
+                        print(f"🔘 {res.output if res.success else res.error}")
+                    else:
+                        print(f"{C_RED}Usage: /key <HOME|BACK|RECENTS|ENTER|POWER>{C_RESET}")
                 elif cmd in ("plugins", "plugin"):
                     screen_extensions(vw)
                 elif cmd in ("logs", "log"):
@@ -689,6 +808,13 @@ def main():
                 response: AgentResponse = global_react_agent.run(query, session_id=session_id)
             finally:
                 spinner.stop()
+
+            # Output Conversational Response
+            if response.conversational_reply:
+                print(f"\n{render_card_top('AGENT RESPONSE', vw, C_GREEN, C_BOLD + C_GREEN)}")
+                for line in wrap_mobile_text(response.conversational_reply, vw - 4):
+                    print(render_card_line(line, vw, C_GREEN))
+                print(render_card_bottom(vw, C_GREEN))
 
             # Output ReAct Deliberation Card
             print(f"\n{render_card_top('AGENT DELIBERATION', vw, C_BLUE, C_BOLD + C_BLUE)}")

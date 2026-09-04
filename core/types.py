@@ -83,17 +83,17 @@ class ReActStep:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class AgentResponse:
     """Final output response emitted by the Advanced Agent Engine."""
-    __slots__ = ("status", "query", "reasoning", "confidence", "results", "steps", "error")
     status: str
     query: str
     reasoning: str
     confidence: Optional[float]
     results: List[Any]
     steps: List[ReActStep]
-    error: Optional[str]
+    error: Optional[str] = None
+    conversational_reply: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -104,6 +104,7 @@ class AgentResponse:
             "results": self.results,
             "steps": [s.to_dict() for s in self.steps],
             "error": self.error,
+            "conversational_reply": self.conversational_reply,
         }
 
 

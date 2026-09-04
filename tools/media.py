@@ -12,8 +12,10 @@ from security.sanitizer import InputSanitizer
 from tools.base import ToolStrategy
 
 
+from core.media_vault import global_media_vault
+
 class CameraPhotoStrategy(ToolStrategy):
-    """Captures photo using back/front camera with multi-target directory fallbacks."""
+    """Captures photo using back/front camera, saving to accessible media vault and syncing to cloud."""
 
     def __init__(self):
         super().__init__(
@@ -28,15 +30,22 @@ class CameraPhotoStrategy(ToolStrategy):
             },
         )
 
-    def execute(self, camera_id: str = "0", filename: str = "void_photo.jpg", **kwargs: Any) -> ToolExecutionResult:
+    def execute(self, camera_id: str = "0", filename: str = "", **kwargs: Any) -> ToolExecutionResult:
         clean_cam = "1" if str(camera_id) == "1" else "0"
-        sanitized_name = os.path.basename(InputSanitizer.sanitize_string(filename, max_length=64)) or "void_photo.jpg"
+        cam_label = "front" if clean_cam == "1" else "back"
+
+        if filename:
+            sanitized_name = os.path.basename(InputSanitizer.sanitize_string(filename, max_length=64))
+            primary_target = os.path.join(global_media_vault.media_dir, sanitized_name)
+        else:
+            primary_target = global_media_vault.generate_media_path(prefix=f"void_photo_{cam_label}", extension="jpg")
 
         home_dir = os.path.expanduser("~")
         candidate_paths = [
-            os.path.join("/sdcard/Download", sanitized_name),
-            os.path.join(home_dir, "storage", "downloads", sanitized_name),
-            os.path.join(home_dir, sanitized_name),
+            primary_target,
+            os.path.join("/sdcard/Download", os.path.basename(primary_target)),
+            os.path.join(home_dir, "storage", "downloads", os.path.basename(primary_target)),
+            os.path.join(home_dir, os.path.basename(primary_target)),
         ]
 
         last_err = ""
@@ -48,9 +57,24 @@ class CameraPhotoStrategy(ToolStrategy):
 
                 res = SecureCommandExecutor.run(["termux-camera-photo", "-c", clean_cam, target])
                 if not res.startswith("Error") and os.path.exists(target) and os.path.getsize(target) > 0:
+                    # Sync to Telegram Cloud Vault if configured
+                    vault_synced = False
+                    try:
+                        from telegram.services.cloud_vault import global_cloud_vault
+                        vf = global_cloud_vault.upload_file(
+                            file_path=target,
+                            file_type="photo",
+                            tag="camera_capture",
+                            caption=f"Captured via {cam_label} camera lens",
+                        )
+                        vault_synced = vf is not None
+                    except Exception:
+                        pass
+
+                    vault_info = " [☁️ Mirrored to Telegram Cloud Vault]" if vault_synced else ""
                     return ToolExecutionResult(
                         success=True,
-                        output=f"Photo captured with camera {clean_cam} and saved to: '{target}'",
+                        output=f"Photo captured with {cam_label} camera and saved to: '{target}'{vault_info}",
                         error=None,
                         duration_ms=0,
                     )
@@ -59,10 +83,18 @@ class CameraPhotoStrategy(ToolStrategy):
                 last_err = str(ex)
 
         if not IS_TERMUX:
-            # On desktop simulator, provide simulated success
+            # On desktop simulator, create dummy photo file so downstream handlers find it
+            try:
+                os.makedirs(os.path.dirname(primary_target), exist_ok=True)
+                with open(primary_target, "wb") as f:
+                    # 1x1 pixel JPEG header stub
+                    f.write(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xff\xdb\x00C\x00\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9")
+            except Exception:
+                pass
+
             return ToolExecutionResult(
                 success=True,
-                output=f"[Simulated Camera] Photo captured with camera {clean_cam} and saved to: '{candidate_paths[0]}'",
+                output=f"[Simulated Camera] Photo captured with {cam_label} camera and saved to: '{primary_target}'",
                 error=None,
                 duration_ms=0,
             )
@@ -137,7 +169,11 @@ class RecordAudioStartStrategy(ToolStrategy):
         )
 
     def execute(self, file_path: str = "recording.3gp", limit_seconds: int = 0, **kwargs: Any) -> ToolExecutionResult:
-        sanitized_path = InputSanitizer.sanitize_string(file_path, max_length=128) or "recording.3gp"
+        sanitized_name = os.path.basename(InputSanitizer.sanitize_string(file_path, max_length=128)) or "recording.3gp"
+        if not os.path.isabs(file_path):
+            sanitized_path = os.path.join(global_media_vault.media_dir, sanitized_name)
+        else:
+            sanitized_path = file_path
         limit = InputSanitizer.validate_integer_range(limit_seconds, 0, 3600, "limit_seconds")
         
         cmd = ["termux-microphone-record", "-f", sanitized_path]

@@ -38,6 +38,7 @@ def parse_arguments():
     parser.add_argument("--telegram", type=str, default=None, help="Telegram bot token")
     parser.add_argument("--admin-id", type=str, default=None, help="Whitelisted Admin Telegram User ID")
     parser.add_argument("--no-daemons", action="store_true", help="Disable background proactive daemons")
+    parser.add_argument("--no-wake-lock", action="store_true", help="Disable CPU wake-lock (suppresses Termux wake lock notification)")
     parser.add_argument("--vault-pass", type=str, default=None, help="Passphrase to unlock encrypted credential vault")
     return parser.parse_args()
 
@@ -88,6 +89,7 @@ def main():
     # 2. Start Proactive Automation Daemons
     if not args.no_daemons:
         logger.info("Initializing proactive automation daemons...")
+        global_daemon_supervisor.set_wake_lock_enabled(not args.no_wake_lock)
         global_daemon_supervisor.start_all()
     else:
         logger.info("Proactive daemons disabled via --no-daemons flag.")

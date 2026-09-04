@@ -34,7 +34,7 @@ curl -sSL https://raw.githubusercontent.com/ashishsinghbora/void/main/install.sh
 ### What the installer automates:
 1. **Host Detection:** Automatically identifies whether you are in native Android Termux or desktop development mode (Linux/macOS).
 2. **Pre-Compiled Native Packages:** Installs `termux-api`, `python`, `python-cryptography` (native binary avoiding Rust compilation), `git`, `clang`, `libffi`, `openssl`, `jq`, and `curl`.
-3. **Android Storage & Wake-Lock:** Triggers `termux-setup-storage` for `~/storage` file links and acquires a CPU wake-lock (`termux-wake-lock`) to maintain 24/7 background execution.
+3. **Android Storage & Wake-Lock Management:** Triggers `termux-setup-storage` for `~/storage` file links and cleans up dangling wake-locks to prevent notification spam.
 4. **Environment Isolation (`--system-site-packages`):** Provisions a dedicated virtual environment that inherits native system packages without requiring pip C/Rust builds.
 5. **Global CLI Launcher:** Links the unified `void` command to `$PREFIX/bin/void` (or `~/.local/bin/void`).
 6. **API Diagnostic Check:** Probes hardware endpoints to verify companion Termux:API permissions.
@@ -97,8 +97,14 @@ void start --telegram <BOT_TOKEN> --admin-id <TELEGRAM_USER_ID>
 # Start without background proactive daemons:
 void start --no-daemons
 
+# Start without CPU wake-lock (suppresses Termux wake-lock notification):
+void start --no-wake-lock
+
 # 3. Start Void as a 24/7 Background Service (detached nohup)
 void start-bg
+
+# Start background service with wake-lock suppressed:
+void start-bg --no-wake-lock
 
 # 4. View Active Service Status, Process PID, Memory RSS & Battery Telemetry
 void status
@@ -307,9 +313,14 @@ If you encounter `Failed to build cryptography` or `Target triple not supported 
 > ```
 > The `install.sh` script does this automatically.
 
-### 2. Install Termux:API Companion App
+### 2. Install Termux & Termux:API via F-Droid (No Google Play)
 > [!IMPORTANT]
-> Do **NOT** install Termux or Termux:API from the Google Play Store (they are deprecated due to Android SDK restrictions). Always install both from **[F-Droid](https://f-droid.org/packages/com.termux.api/)**.
+> **Both Termux and Termux:API must be installed from F-Droid (or GitHub Releases), never the Google Play Store.**
+>
+> **Why?** Google Play Termux was deprecated due to Android target SDK 29 restrictions. Mixing a Google Play Termux build with an F-Droid Termux:API build causes an `INSTALL_FAILED_UPDATE_INCOMPATIBLE` signature mismatch and completely breaks the Unix IPC socket between Termux and Android hardware sensors.
+>
+> 1. Install **Termux**: [F-Droid Package](https://f-droid.org/packages/com.termux/) or [GitHub Releases](https://github.com/termux/termux-app/releases)
+> 2. Install **Termux:API**: [F-Droid Package](https://f-droid.org/packages/com.termux.api/) or [GitHub Releases](https://github.com/termux/termux-api/releases)
 
 ### 3. Grant Android System Permissions
 Navigate to your device's **Android Settings** $\to$ **Apps** $\to$ **Termux:API** $\to$ **Permissions** and enable:
@@ -319,14 +330,40 @@ Navigate to your device's **Android Settings** $\to$ **Apps** $\to$ **Termux:API
 - 📇 **Contacts** (Required for `get_contacts`)
 - 💾 **Storage** (Required for saving captured media and downloads)
 
-### 4. Disable Battery Optimization (24/7 Background Uptime)
-1. In Android Settings $\to$ **Apps** $\to$ **Termux** $\to$ **Battery**, select **"Unrestricted"** (Disable battery optimization).
-2. Acquire CPU wake-lock inside Termux:
-   ```bash
-   termux-wake-lock
-   ```
+### 4. Silencing the "Termux wake lock held" Notification Sound & Spam
+When running background daemons, Termux holds an Android CPU wake-lock (`termux-wake-lock`) to prevent the operating system from suspending Python execution during deep sleep. Android 8.0+ enforces a persistent foreground notification ("Termux wake lock held"), which can cause audible alert chimes or clutter the drawer depending on OEM settings.
 
-### 5. Storage Setup
+You can handle this in one of two ways:
+
+#### Option A: Silence the Notification Channel (Recommended for 24/7 background uptime)
+Keep the CPU wake-lock active for continuous background operation, but silence the alert permanently:
+1. When the **"Termux wake lock held"** notification appears, swipe slightly on it and tap the ⚙️ **Settings gear** (or long-press the notification).
+   *(Alternatively: Open **Android Settings** $\to$ **Apps** $\to$ **Termux** $\to$ **Notifications** $\to$ **Notification categories**).*
+2. Select the **"Termux service"** (or "Execution service") channel.
+3. Change the alert style from **Default / Alerting** to **Silent** (or "Deliver quietly").
+4. Turn off **"Vibrate"** and **"Pop on screen"**, and enable **"Minimize"** (or low priority).
+5. **Result:** The wake-lock remains 100% operational keeping Void alive 24/7 in your pocket, while your device stays completely silent without notification sound or alert spam.
+
+#### Option B: Opt Out via Flag or Environment Variable
+If you only run Void during active foreground terminal sessions and do not want wake-locks acquired:
+```bash
+# Foreground server with wake-lock disabled:
+void start --no-wake-lock
+
+# Background service with wake-lock disabled:
+void start-bg --no-wake-lock
+
+# Disable globally via environment variable:
+export VOID_NO_WAKE_LOCK=1
+
+# Clear any active dangling wake-lock immediately:
+termux-wake-unlock
+```
+
+### 5. Disable Battery Optimization (24/7 Background Uptime)
+1. In Android Settings $\to$ **Apps** $\to$ **Termux** $\to$ **Battery**, select **"Unrestricted"** (Disable battery optimization so Android OEM killers do not terminate the process).
+
+### 6. Storage Setup
 Execute the following to map Android shared storage to Termux:
 ```bash
 termux-setup-storage
@@ -345,7 +382,7 @@ pytest -v
 
 ```
 ============================== test session starts ==============================
-collected 34 items
+collected 35 items
 
 tests/test_api_sse.py::test_flask_app_routes PASSED                      [  2%]
 tests/test_api_sse.py::test_event_bus_pub_sub PASSED                     [  5%]

@@ -25,15 +25,29 @@ class SystemDaemonSupervisor:
         "_notif_daemon",
         "_routine_scheduler",
         "_wake_lock_acquired",
+        "_enable_wake_lock",
     )
 
-    def __init__(self):
+    def __init__(self, enable_wake_lock: bool = True):
         self._notif_daemon = NotificationInterceptorDaemon(interval_seconds=12.0)
         self._routine_scheduler = RoutineScheduler()
         self._wake_lock_acquired = False
+        # Allow disabling wake lock via environment variable VOID_NO_WAKE_LOCK=1
+        env_disabled = os.environ.get("VOID_NO_WAKE_LOCK", "0").lower() in ("1", "true", "yes")
+        self._enable_wake_lock = enable_wake_lock and not env_disabled
+
+    def set_wake_lock_enabled(self, enabled: bool) -> None:
+        """Configures whether Android CPU wake-lock should be held."""
+        self._enable_wake_lock = enabled
+        if not enabled and self._wake_lock_acquired:
+            self.release_wake_lock()
 
     def acquire_wake_lock(self) -> None:
-        """Acquires Android CPU wake-lock via termux-wake-lock if running in Termux."""
+        """Acquires Android CPU wake-lock via termux-wake-lock if permitted."""
+        if not self._enable_wake_lock:
+            logger.info("CPU wake-lock disabled by configuration (--no-wake-lock).")
+            return
+
         if IS_TERMUX:
             try:
                 subprocess.run(["termux-wake-lock"], capture_output=True, timeout=5)

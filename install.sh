@@ -87,10 +87,9 @@ if [ "$IS_TERMUX" -eq 1 ]; then
         sleep 1
     fi
 
-    # Acquire wake-lock to prevent OS battery murder
-    if command -v termux-wake-lock >/dev/null 2>&1; then
-        log_info "Acquiring Termux wake-lock to maintain continuous edge processing..."
-        termux-wake-lock || true
+    # Release any dangling wake-lock from previous runs so notifications stay quiet
+    if command -v termux-wake-unlock >/dev/null 2>&1; then
+        termux-wake-unlock >/dev/null 2>&1 || true
     fi
 
     # Test Termux:API Companion APK
@@ -99,12 +98,13 @@ if [ "$IS_TERMUX" -eq 1 ]; then
         echo ""
         log_warning "Termux:API CLI tool is installed, but Android returned an error."
         echo -e "${C_YELLOW}================================================================${C_RESET}"
-        echo -e "${C_BOLD}ACTION REQUIRED: Install Termux:API Companion APK${C_RESET}"
-        echo -e "Android requires the 'Termux:API' APK to bridge hardware sensors."
-        echo -e "1. Download Termux:API from F-Droid (NOT Google Play):"
+        echo -e "${C_BOLD}ACTION REQUIRED: Install Termux & Termux:API via F-Droid${C_RESET}"
+        echo -e "Both Termux and Termux:API MUST be installed from F-Droid (or GitHub Releases)."
+        echo -e "Do NOT use Google Play Store (signature mismatch & missing API bridge)."
+        echo -e "1. Download Termux:API from F-Droid:"
         echo -e "   ${C_CYAN}https://f-droid.org/packages/com.termux.api/${C_RESET}"
         echo -e "2. Grant permissions in Android Settings -> Apps -> Termux:API"
-        echo -e "   (Camera, Contacts, SMS, Location, Physical Activity)"
+        echo -e "   (Camera, Contacts, SMS, Location)"
         echo -e "${C_YELLOW}================================================================${C_RESET}"
         echo ""
     else

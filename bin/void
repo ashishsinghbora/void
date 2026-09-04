@@ -67,6 +67,12 @@ show_help() {
     echo -e "  ${C_CYAN}update${C_RESET}             Pull latest updates and sync dependencies"
     echo -e "  ${C_CYAN}help${C_RESET}               Show this help message"
     echo ""
+    echo -e "${C_BOLD}Options (for start / start-bg):${C_RESET}"
+    echo -e "  ${C_CYAN}--no-wake-lock${C_RESET}     Disable CPU wake-lock (suppresses Termux wake-lock notification)"
+    echo -e "  ${C_CYAN}--no-daemons${C_RESET}       Disable background proactive daemons"
+    echo -e "  ${C_CYAN}--port <port>${C_RESET}      Specify custom port (default: 5000)"
+    echo -e "  ${C_CYAN}--vault-pass <key>${C_RESET} Passphrase for encrypted credential vault"
+    echo ""
     echo -e "${C_BOLD}Web Dashboard:${C_RESET} http://localhost:5000"
     echo -e "${C_BOLD}GitHub Pages UI:${C_RESET} https://ashishsinghbora.github.io/void/"
     echo ""
@@ -94,7 +100,7 @@ cmd_start_bg() {
     fi
 
     echo -e "${C_GREEN}[INFO]${C_RESET} Launching Void in background..."
-    nohup "$PYTHON_BIN" "$VOID_DIR/app.py" > "$HOME/.void.log" 2>&1 &
+    nohup "$PYTHON_BIN" "$VOID_DIR/app.py" "$@" > "$HOME/.void.log" 2>&1 &
     NEW_PID=$!
     echo "$NEW_PID" > "$PID_FILE"
     sleep 2

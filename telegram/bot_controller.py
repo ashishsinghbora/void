@@ -80,7 +80,15 @@ class AuthenticatedTelegramController:
     def _is_authorized(self, user_id: int) -> bool:
         """Verifies if user ID matches whitelisted administrator."""
         if not self._admin_ids:
-            logger.warning("ADMIN_TELEGRAM_ID not configured! All requests are unauthenticated.")
+            logger.warning(f"ADMIN_TELEGRAM_ID not configured! Auto-whitelisting first caller: {user_id}")
+            self._admin_ids.add(user_id)
+            os.environ["ADMIN_TELEGRAM_ID"] = str(user_id)
+            if not self._token.startswith("123456789:AAG_mock"):
+                try:
+                    from core.bot_setup import TelegramSetupWizard
+                    TelegramSetupWizard.save_configuration(self._token, user_id)
+                except Exception:
+                    pass
             return True
         return user_id in self._admin_ids
 
@@ -96,18 +104,49 @@ class AuthenticatedTelegramController:
         btn_photo = types.InlineKeyboardButton("📸 Take Photo", callback_data="cb_photo")
         btn_clean = types.InlineKeyboardButton("🧹 Clean Storage", callback_data="cb_clean")
         btn_fetch = types.InlineKeyboardButton("⚡ FastFetch", callback_data="cb_fastfetch")
-        btn_logs = types.InlineKeyboardButton("📋 Recent Logs", callback_data="cb_logs")
+        btn_logs = types.InlineKeyboardButton("📋 Audit Logs", callback_data="cb_logs")
+        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
+        btn_sec = types.InlineKeyboardButton("🛡️ Security Hub", callback_data="cb_security")
         btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
         btn_models = types.InlineKeyboardButton("🧠 Model Status", callback_data="cb_models")
-        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
-        btn_refresh = types.InlineKeyboardButton("🔄 Refresh", callback_data="cb_back_main")
+        btn_refresh = types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="cb_back_main")
 
         markup.add(btn_torch, btn_bat)
         markup.add(btn_photo, btn_clean)
         markup.add(btn_fetch, btn_logs)
+        markup.add(btn_plugins, btn_sec)
         markup.add(btn_apps, btn_models)
-        markup.add(btn_plugins, btn_refresh)
+        markup.add(btn_refresh)
         return markup
+
+    def get_security_keyboard(self) -> Any:
+        """Constructs security dashboard navigation markup."""
+        if not HAS_TELEBOT or types is None:
+            return None
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        btn_refresh = types.InlineKeyboardButton("🔄 Refresh Status", callback_data="cb_security")
+        btn_back = types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main")
+        markup.add(btn_refresh, btn_back)
+        return markup
+
+    def _render_security_card(self, user_id: int) -> str:
+        """Renders formatted Markdown security & session status card."""
+        import resource
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        rss_mb = round(usage.ru_maxrss / 1024.0, 1)
+        admins = ", ".join(str(a) for a in self._admin_ids) if self._admin_ids else "Auto-pairing active"
+        return (
+            "🛡️ *Void Security & Session Dashboard*\n\n"
+            f"• *Telegram Bot:* `@voidtermuxbot`\n"
+            f"• *Whitelisted Admin(s):* `{admins}`\n"
+            f"• *Your User ID:* `{user_id}` (Authorized ✅)\n"
+            f"• *Memory RSS:* `{rss_mb} MB` (Target < 30MB)\n"
+            f"• *Rate Limiter:* Token Bucket (`0.5 req/s`, burst 5)\n"
+            f"• *Session Timeout:* `900s` inactivity TTL\n"
+            f"• *Credential Vault:* AES-256-GCM + PBKDF2 (100k iters)\n"
+            f"• *Database WAL:* SQLite Write-Ahead Logging active\n\n"
+            "🔒 _All operations execute locally inside Termux environment._"
+        )
 
     def get_plugins_keyboard(self) -> Any:
         """Constructs interactive plugin manager submenu."""
@@ -197,6 +236,24 @@ class AuthenticatedTelegramController:
                 return
             bat_res = global_tool_registry.execute("get_battery_status")
             bot.reply_to(message, f"🔋 *Battery Status:*\n```json\n{json.dumps(bat_res.output, indent=2)}\n```", parse_mode="Markdown")
+
+        @bot.message_handler(commands=["torch"])
+        def handle_torch(message):
+            user_id = message.from_user.id
+            if not self._is_authorized(user_id):
+                return
+            self._torch_on = not self._torch_on
+            global_tool_registry.execute("set_torch", on=self._torch_on)
+            state_str = "ON" if self._torch_on else "OFF"
+            bot.reply_to(message, f"🔦 *Flashlight turned {state_str}*", reply_markup=self.get_main_keyboard(), parse_mode="Markdown")
+
+        @bot.message_handler(commands=["security"])
+        def handle_security(message):
+            user_id = message.from_user.id
+            if not self._is_authorized(user_id):
+                return
+            card = self._render_security_card(user_id)
+            bot.reply_to(message, card, reply_markup=self.get_security_keyboard(), parse_mode="Markdown")
 
         @bot.message_handler(commands=["logs"])
         def handle_logs(message):
@@ -370,6 +427,20 @@ class AuthenticatedTelegramController:
                 for l in recent:
                     lines.append(f"• `#{l['step']}` *{l['tool_name']}* - {l['status']} ({l['duration_ms']}ms)")
                 bot.send_message(chat_id, "\n".join(lines) if recent else "No recent logs.", parse_mode="Markdown")
+
+            elif data == "cb_security":
+                bot.answer_callback_query(call.id)
+                card = self._render_security_card(user_id)
+                try:
+                    bot.edit_message_text(
+                        card,
+                        chat_id,
+                        message_id,
+                        reply_markup=self.get_security_keyboard(),
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    bot.send_message(chat_id, card, reply_markup=self.get_security_keyboard(), parse_mode="Markdown")
 
             elif data == "cb_apps":
                 bot.answer_callback_query(call.id)

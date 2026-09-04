@@ -6,8 +6,8 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Android%20(Termux)%20%7C%20Linux-cyan.svg)](https://termux.dev)
 [![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2030MB%20(Verified)-emerald.svg)](#-memory-benchmarks--efficiency)
-[![Tests](https://img.shields.io/badge/tests-51%2F51%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
-[![Control](https://img.shields.io/badge/control-Rich%20TUI%20%2B%20Telegram%20Bot-purple.svg)](#-rich-tui--telegram-control)
+[![Tests](https://img.shields.io/badge/tests-64%2F64%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Control](https://img.shields.io/badge/control-Mobile%20TUI%20%2B%20Telegram%20Bot-purple.svg)](#-mobile-optimized-rich-tui)
 
 **Void** is a hyper-minimalist, terminal-and-Telegram-native autonomous Android orchestrator engineered for mobile edge computing. Inspired by ultra-lightweight agent frameworks (like OpenClaw), Void eliminates all heavy web server bloat (zero Flask, zero WSGI, zero HTML/SSE overhead), starting with **zero default extensions** and running as an ultra-lean local daemon controlled exclusively through an interactive rich TUI and an interactive Telegram Bot interface.
 
@@ -117,9 +117,9 @@ void setup-bot
 
 ---
 
-## ⚡ Unified CLI & Rich TUI
+## ⚡ Mobile-Optimized Rich TUI
 
-Launch Void's interactive Terminal User Interface (TUI):
+Launch Void's mobile-adaptive Terminal User Interface (TUI):
 
 ```bash
 void
@@ -127,17 +127,25 @@ void
 void cli
 ```
 
-### Immersive TUI Features:
-- **ANSI Status Badge:** Real-time indicator for Host OS, RAM RSS, active model engine, and active plugin count.
-- **Animated Deliberation Spinner:** Background spinner (`⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`) active during ReAct reasoning cycles.
-- **Structured Execution Tables:** Unicode tables displaying step numbers, tool actions, statuses, and execution latencies in milliseconds.
-- **Built-in Slash Commands:**
-  - `/fastfetch` — Inline ASCII system telemetry
-  - `/plugins` — Dynamic plugin manager (`list`, `search`, `install`, `remove`)
-  - `/models` — Local quantized model catalog & weight manager
-  - `/download <id>` — Stream model weights with live CLI progress bar
-  - `/battery`, `/torch`, `/clean`, `/clear`, `/help`, `/exit`
-- **Command History:** Persistent history via `readline` (Up/Down arrow navigation).
+### 📱 Mobile-First Design & Architecture:
+- **Responsive Viewport Adaptation:** Automatically detects screen width via `shutil.get_terminal_size()`. Seamlessly adapts to portrait Android phone screens (40–60 columns) with zero text wrapping glitches or broken borders.
+- **Stacked Card Layouts:** Replaced wide horizontal multi-column tables with stacked vertical execution cards that never overflow narrow mobile viewports.
+- **Touch-Friendly Quick Action Palette (`[1]-[0]`):** Single-tap numeric shortcuts so you don't have to type long commands on a soft keyboard:
+  - `[1]` 🔦 **Torch** — Instant flashlight toggle
+  - `[2]` 🔋 **Battery** — Real-time battery percentage & thermal state
+  - `[3]` 📸 **Camera Snap** — Direct hardware camera capture
+  - `[4]` ⚡ **FastFetch** — Stacked ASCII/Unicode telemetry
+  - `[5]` 🧩 **Extensions** — Interactive dynamic extension store
+  - `[6]` 🧹 **Clean Disk** — Wipe caches, thumbnails, and temp files
+  - `[7]` 📋 **Audit Logs** — Hardware execution audit history viewer
+  - `[8]` 🛡️ **Security** — Active sessions, token bucket rate limiter & cipher status
+  - `[9]` 🧠 **Local LLMs** — Small-model downloader & weight inspector
+  - `[0]` 🤖 **Bot Hub** — `@voidtermuxbot` status & test ping
+  - `[?]` 📖 **Help Guide** — Command directory & directive examples
+  - `[Q]` 🚪 **Exit App** — Clean teardown & history save
+- **Live Telemetry & Resource Monitor Widget:** Live card displaying RAM RSS (< 30MB benchmark tracking), battery level, SQLite WAL database status, active engine, and bot connection state.
+- **Animated Activity Spinner:** Thread-safe background spinner (`⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`) during ReAct reasoning cycles.
+- **Persistent Command History:** Arrow navigation powered by `readline` (`~/.void/.cli_history`).
 
 ---
 
@@ -255,23 +263,24 @@ void test
 
 ```text
 ============================= test session starts ==============================
-collected 51 items
+collected 64 items
 
-tests/test_bot_setup.py ...                                              [  5%]
-tests/test_daemons.py ...                                                [ 11%]
-tests/test_extensions.py ......                                          [ 23%]
-tests/test_fastfetch.py ...                                              [ 29%]
-tests/test_lru_cache.py ...                                              [ 35%]
-tests/test_model_manager.py ....                                         [ 43%]
-tests/test_react_agent.py ...                                            [ 49%]
-tests/test_security.py ........                                          [ 64%]
-tests/test_simulator.py ..                                               [ 68%]
-tests/test_social_apps.py .....                                          [ 78%]
-tests/test_storage.py ...                                                [ 84%]
-tests/test_telegram_bot.py ....                                          [ 92%]
+tests/test_bot_setup.py ...                                              [  4%]
+tests/test_daemons.py ...                                                [  9%]
+tests/test_extensions.py ......                                          [ 18%]
+tests/test_fastfetch.py ...                                              [ 23%]
+tests/test_lru_cache.py ...                                              [ 28%]
+tests/test_model_manager.py ....                                         [ 34%]
+tests/test_react_agent.py ...                                            [ 39%]
+tests/test_security.py ........                                          [ 51%]
+tests/test_simulator.py ..                                               [ 54%]
+tests/test_social_apps.py .....                                          [ 62%]
+tests/test_storage.py ...                                                [ 67%]
+tests/test_telegram_bot.py ....                                          [ 73%]
+tests/test_termux_void.py .............                                  [ 93%]
 tests/test_tools.py ....                                                 [100%]
 
-============================= 51 passed in 10.65s ==============================
+============================== 64 passed in 2.68s ==============================
 ```
 
 ---

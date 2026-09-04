@@ -184,9 +184,16 @@ class FastFetchCollector:
             },
         }
 
-    def render_ascii(self, use_color: bool = True) -> str:
+    def render_ascii(self, use_color: bool = True, max_width: Optional[int] = None) -> str:
         """Renders fastfetch-style ASCII art and system telemetry for the terminal."""
         data = self.collect()
+
+        if max_width is None:
+            try:
+                import shutil
+                max_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+            except Exception:
+                max_width = 80
 
         c_cyan = "\033[0;36m" if use_color else ""
         c_green = "\033[0;32m" if use_color else ""
@@ -199,7 +206,7 @@ class FastFetchCollector:
             r"  __     __     _     _ ",
             r"  \ \   / /__  (_) __| |",
             r"   \ \ / / _ \ | |/ _` |",
-            r"    \ V / (_) || | (_| |\n" if False else r"    \ V / (_) || | (_| |",
+            r"    \ V / (_) || | (_| |",
             r"     \_/ \___/ |_|\__,_|",
             r"    EDGE AGENTIC DAEMON ",
         ]
@@ -217,7 +224,7 @@ class FastFetchCollector:
         daemons_str = ", ".join(daemon_info) if daemon_info else "Idle"
 
         rss_target_met = data['process_rss_mb'] <= 30.0
-        rss_tag = f"{c_green}(Target < 30MB ✅){c_reset}" if rss_target_met else f"{c_yellow}(Target < 30MB ⚠️){c_reset}"
+        rss_tag = f"{c_green}(< 30MB ✅){c_reset}" if rss_target_met else f"{c_yellow}(< 30MB ⚠️){c_reset}"
 
         info_lines = [
             f"{c_bold}{c_cyan}Host{c_reset}        │ {data['device']}",
@@ -233,11 +240,29 @@ class FastFetchCollector:
             f"{c_bold}{c_cyan}Daemons{c_reset}     │ {daemons_str}",
         ]
 
+        # Stacked card layout for mobile / narrow viewports (< 75 columns)
+        if max_width < 75:
+            box_w = max(38, min(max_width - 1, 56))
+            title = " VOID TELEMETRY FASTFETCH "
+            dash_count = max(1, box_w - 4 - len(title))
+            top_bar = f"{c_bold}{c_purple}╭─{title}{'─' * dash_count}╮{c_reset}"
+            bottom_bar = f"{c_bold}{c_purple}╰{'─' * (box_w - 2)}╯{c_reset}"
+            sep = f"{c_purple}├{'─' * (box_w - 2)}┤{c_reset}"
+
+            output = [top_bar]
+            output.append(f"{c_purple}│{c_reset} {c_bold}{c_cyan}⚡ VOID MOBILE EDGE NODE{c_reset}")
+            output.append(sep)
+            for line in info_lines:
+                output.append(f"{c_purple}│{c_reset} {line}")
+            output.append(bottom_bar)
+            return "\n".join(output)
+
+        # Standard wide terminal layout (>= 75 columns)
         max_logo_len = max(len(line) for line in logo)
         output = []
-        output.append(f"{c_bold}{c_purple}\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e{c_reset}")
-        output.append(f"{c_bold}{c_purple}\u2502                VOID TELEMETRY FASTFETCH                   \u2502{c_reset}")
-        output.append(f"{c_bold}{c_purple}\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f{c_reset}")
+        output.append(f"{c_bold}{c_purple}╭───────────────────────────────────────────────────────────╮{c_reset}")
+        output.append(f"{c_bold}{c_purple}│                VOID TELEMETRY FASTFETCH                   │{c_reset}")
+        output.append(f"{c_bold}{c_purple}╰───────────────────────────────────────────────────────────╯{c_reset}")
 
         max_rows = max(len(logo), len(info_lines))
         for i in range(max_rows):

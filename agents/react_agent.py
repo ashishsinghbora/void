@@ -69,20 +69,18 @@ class AutonomousReActAgent:
         model_path = global_model_manager.get_active_model_path()
         model_name = global_model_manager.get_active_model_name()
 
-        if not HAS_NEEDLE or needle is None:
+        if not HAS_NEEDLE or needle is None or not model_path:
             if model_path:
                 logger.info(f"Detected local model binary at '{model_path}' ({model_name}). Local LLM engine in heuristic bridge mode.")
             else:
-                logger.info("Local LLM model offline. Running in deterministic heuristic ReAct mode.")
+                logger.info("Local LLM model offline. Running in deterministic heuristic ReAct mode (<30MB RAM).")
             return
 
         try:
             callables = self._registry.create_needle_callables()
-            logger.info(f"Binding {len(callables)} tool strategies to Void LLM ({model_name or 'default'})...")
-            if model_path and hasattr(needle, "Needle"):
+            logger.info(f"Binding {len(callables)} tool strategies to Void LLM ({model_name})...")
+            if hasattr(needle, "Needle"):
                 self._llm_agent = needle.Needle(tools=callables, model_path=model_path)
-            else:
-                self._llm_agent = needle.Needle(tools=callables)
             logger.info("Void LLM model loaded and bound successfully.")
         except Exception as e:
             logger.error(f"Failed to bind local LLM runtime: {e}")

@@ -8,6 +8,7 @@ authenticated AES-256-GCM encryption with cryptographic salt and PBKDF2-HMAC-SHA
 import os
 import json
 import base64
+import hmac
 import hashlib
 from typing import Dict, Optional
 
@@ -97,7 +98,7 @@ class CredentialVault:
             actual_cipher = ciphertext[:-mac_len]
             expected_mac = ciphertext[-mac_len:]
             actual_mac = hashlib.sha256(key + actual_cipher).digest()
-            if not hashlib.compare_digest(actual_mac, expected_mac):
+            if not hmac.compare_digest(actual_mac, expected_mac):
                 raise ValueError("Decryption failed: Tampered ciphertext or wrong passphrase.")
             pad_key = hashlib.sha256(key + nonce).digest()
             keystream = (pad_key * ((len(actual_cipher) // len(pad_key)) + 1))[:len(actual_cipher)]

@@ -65,6 +65,8 @@ if [ "$IS_TERMUX" -eq 1 ]; then
 
     log_info "Installing core prerequisites: termux-api, python, git, clang, libffi, openssl, jq, curl..."
     pkg install -y termux-api python git clang libffi openssl jq curl
+    # Install pre-compiled cryptography binary from Termux pkg (avoids rust compilation)
+    pkg install -y python-cryptography >/dev/null 2>&1 || true
 
     # Check / trigger storage permission
     if [ ! -d "$HOME/storage" ]; then
@@ -128,14 +130,18 @@ fi
 
 # 4. Dedicated Virtual Environment Setup
 log_info "Configuring Python virtual environment in $TARGET_DIR/.venv..."
-python3 -m venv "$TARGET_DIR/.venv"
+VENV_ARGS=""
+if [ "$IS_TERMUX" -eq 1 ]; then
+    VENV_ARGS="--system-site-packages"
+fi
+python3 -m venv $VENV_ARGS "$TARGET_DIR/.venv"
 source "$TARGET_DIR/.venv/bin/activate"
 
 log_info "Upgrading pip, setuptools, and wheel..."
 pip install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
 
 log_info "Installing Void core dependencies from requirements.txt..."
-pip install -r "$TARGET_DIR/requirements.txt"
+pip install --no-cache-dir -r "$TARGET_DIR/requirements.txt"
 
 # 5. CLI Binary Symlink Registration
 log_info "Registering 'void' global command launcher..."

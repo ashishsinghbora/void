@@ -17,6 +17,21 @@ logger = logging.getLogger("VoidAdvancedCore.Routes")
 api_bp = Blueprint("api_bp", __name__)
 
 
+@api_bp.after_request
+def add_cors_headers(response):
+    """Enables Cross-Origin Resource Sharing (CORS) for GitHub Pages remote dashboards."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    return response
+
+
+@api_bp.route("/api/<path:subpath>", methods=["OPTIONS"])
+def handle_options(subpath):
+    """Handles CORS preflight OPTIONS requests."""
+    return jsonify({"status": "ok"}), 200
+
+
 @api_bp.route("/")
 def index():
     """Renders the glassmorphic dashboard."""

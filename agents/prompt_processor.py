@@ -2,7 +2,7 @@
 agents/prompt_processor.py - Natural Language Query Preprocessing & Speech Wrapping.
 
 Normalizes user intent, validates query boundaries, and guarantees that speech
-synthesis directives are properly formatted for parsing by the Needle model runtime.
+synthesis directives are properly formatted for parsing by the Void model runtime.
 """
 
 from security.sanitizer import InputSanitizer

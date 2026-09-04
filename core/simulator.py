@@ -200,7 +200,21 @@ class TermuxHardwareSimulator:
             notif_id = args[1] if len(args) > 1 else ""
             return f"[Simulated Action] Removed notification with ID {notif_id}"
 
+        if cmd == "termux-open":
+            target = args[1] if len(args) > 1 else ""
+            return f"[Simulated Intent] Opened URL/App: '{target}'"
+
+        if cmd == "termux-wake-lock":
+            return "[Simulated Power] Acquired CPU wake lock (background execution sustained)."
+
+        if cmd == "termux-wake-unlock":
+            return "[Simulated Power] Released CPU wake lock."
+
+        if cmd == "termux-setup-storage":
+            return "[Simulated Storage] Storage permissions linked to ~/storage."
+
         if cmd in ("monkey", "am"):
             return f"[Simulated Android Intent] Dispatched {' '.join(args)}"
 
         return f"[Simulated Execution] {' '.join(args)}"
+

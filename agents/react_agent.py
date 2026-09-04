@@ -54,6 +54,13 @@ class AutonomousReActAgent:
         self._max_steps = max_steps
         self._llm_agent = None
 
+        # Discover and bind modular dynamic extensions
+        try:
+            from extensions.manager import global_extension_manager
+            global_extension_manager.discover_and_load_all()
+        except Exception as e:
+            logger.warning(f"Extension discovery warning: {e}")
+
         self._init_llm_model()
 
     def _init_llm_model(self) -> None:
@@ -284,6 +291,21 @@ class AutonomousReActAgent:
             args = {"message": query}
         elif "photo" in q or "camera" in q:
             tool_name = "take_camera_photo"
+        elif any(k in q for k in ("crypto", "bitcoin", "btc", "ethereum", "eth", "solana", "sol")):
+            tool_name = "track_crypto"
+            coin = "bitcoin"
+            for c in ("solana", "sol", "ethereum", "eth", "dogecoin", "doge", "ripple", "xrp", "bitcoin", "btc"):
+                if c in q:
+                    coin = c
+                    break
+            args = {"coin": coin, "speak": any(s in q for s in ("speak", "say", "tell"))}
+        elif any(k in q for k in ("github", "repo", "repository", "pull request", "pr", "issue")):
+            tool_name = "monitor_github"
+            check_type = "issues" if any(s in q for s in ("issue", "pr", "bug")) else "summary"
+            args = {"repo": "ashishsinghbora/void", "check_type": check_type}
+        elif any(k in q for k in ("clean", "cleanup", "cache", "free space", "temp files", "storage")):
+            tool_name = "clean_system"
+            args = {"dry_run": "force" not in q and "delete" not in q}
         else:
             tool_name = "get_battery_status"
 

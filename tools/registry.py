@@ -2,7 +2,7 @@
 tools/registry.py - Hash-Indexed Strategy Pattern Tool Registry.
 
 Enables O(1) dynamic strategy lookups, automated parameter binding,
-and bidirectional integration with the Needle LLM model runtime.
+and bidirectional integration with the Void LLM model runtime.
 """
 
 import functools
@@ -135,9 +135,9 @@ class ToolRegistry:
             for s in self._tools.values()
         ]
 
-    def create_needle_callables(self) -> List[Callable]:
+    def create_void_callables(self) -> List[Callable]:
         """
-        Creates decorated callables compatible with the Needle LLM framework.
+        Creates decorated callables compatible with the Void LLM agent runtime.
         Automatically attaches docstrings and parameter signatures.
         """
         callables = []
@@ -162,6 +162,10 @@ class ToolRegistry:
 
         return callables
 
+    # Backward compatibility alias
+    create_needle_callables = create_void_callables
+
 
 # Global default registry instance
 global_tool_registry = ToolRegistry()
+

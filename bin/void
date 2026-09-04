@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ⚡ VOID CLI - Unified Command-Line Interface for Void Edge Agent Platform
+# ==============================================================================
+
+set -e
+
+# Resolve repository directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/app.py" ]; then
+    VOID_DIR="$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/../app.py" ]; then
+    VOID_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [ -d "$HOME/void" ]; then
+    VOID_DIR="$HOME/void"
+else
+    VOID_DIR="$(pwd)"
+fi
+
+# Locate Python Virtual Environment
+if [ -f "$VOID_DIR/.venv/bin/python3" ]; then
+    PYTHON_BIN="$VOID_DIR/.venv/bin/python3"
+elif [ -f "$HOME/.void-venv/bin/python3" ]; then
+    PYTHON_BIN="$HOME/.void-venv/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+else
+    echo "[ERROR] Python 3 not found. Please run install.sh first."
+    exit 1
+fi
+
+PID_FILE="$HOME/.void.pid"
+
+# Colors
+C_CYAN='\033[0;36m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[1;33m'
+C_RED='\033[0;31m'
+C_RESET='\033[0m'
+C_BOLD='\033[1m'
+
+show_banner() {
+    echo -e "${C_CYAN}${C_BOLD}"
+    echo "  ██╗   ██╗ ██████╗ ██╗██████╗ "
+    echo "  ██║   ██║██╔═══██╗██║██╔══██╗"
+    echo "  ██║   ██║██║   ██║██║██║  ██║"
+    echo "  ╚██╗ ██╔╝██║   ██║██║██║  ██║"
+    echo "   ╚████╔╝ ╚██████╔╝██║██████╔╝"
+    echo "    ╚═══╝   ╚═════╝ ╚═╝╚═════╝ "
+    echo -e "  Enterprise Edge Agentic Platform (Android / Termux)${C_RESET}"
+    echo ""
+}
+
+show_help() {
+    show_banner
+    echo -e "${C_BOLD}Usage:${C_RESET} void <command> [options]"
+    echo ""
+    echo -e "${C_BOLD}Commands:${C_RESET}"
+    echo -e "  ${C_CYAN}cli${C_RESET}                Launch interactive ReAct terminal session (default)"
+    echo -e "  ${C_CYAN}start${C_RESET}              Start production Waitress server + daemons (foreground)"
+    echo -e "  ${C_CYAN}start-bg${C_RESET}           Start Void server as a background service"
+    echo -e "  ${C_CYAN}stop${C_RESET}               Stop running background Void service"
+    echo -e "  ${C_CYAN}status${C_RESET}             Check running status, memory, and telemetry"
+    echo -e "  ${C_CYAN}test${C_RESET}               Run automated test suite (pytest)"
+    echo -e "  ${C_CYAN}clean${C_RESET}              Run system and temporary file cleaner"
+    echo -e "  ${C_CYAN}update${C_RESET}             Pull latest updates and sync dependencies"
+    echo -e "  ${C_CYAN}help${C_RESET}               Show this help message"
+    echo ""
+    echo -e "${C_BOLD}Web Dashboard:${C_RESET} http://localhost:5000"
+    echo -e "${C_BOLD}GitHub Pages UI:${C_RESET} https://ashishsinghbora.github.io/void/"
+    echo ""
+}
+
+cmd_cli() {
+    cd "$VOID_DIR"
+    exec "$PYTHON_BIN" "$VOID_DIR/termux_void.py" "$@"
+}
+
+cmd_start() {
+    cd "$VOID_DIR"
+    echo -e "${C_GREEN}[INFO]${C_RESET} Starting Void Enterprise Stack on http://0.0.0.0:5000..."
+    exec "$PYTHON_BIN" "$VOID_DIR/app.py" "$@"
+}
+
+cmd_start_bg() {
+    cd "$VOID_DIR"
+    if [ -f "$PID_FILE" ]; then
+        OLD_PID=$(cat "$PID_FILE")
+        if kill -0 "$OLD_PID" 2>/dev/null; then
+            echo -e "${C_YELLOW}[WARNING]${C_RESET} Void is already running with PID $OLD_PID."
+            exit 0
+        fi
+    fi
+
+    echo -e "${C_GREEN}[INFO]${C_RESET} Launching Void in background..."
+    nohup "$PYTHON_BIN" "$VOID_DIR/app.py" > "$HOME/.void.log" 2>&1 &
+    NEW_PID=$!
+    echo "$NEW_PID" > "$PID_FILE"
+    sleep 2
+
+    if kill -0 "$NEW_PID" 2>/dev/null; then
+        echo -e "${C_GREEN}[SUCCESS]${C_RESET} Void started successfully (PID: $NEW_PID)."
+        echo -e "  • Web Dashboard: ${C_CYAN}http://localhost:5000${C_RESET}"
+        echo -e "  • Log File:      ${C_CYAN}$HOME/.void.log${C_RESET}"
+    else
+        echo -e "${C_RED}[ERROR]${C_RESET} Void failed to start. Inspect $HOME/.void.log for details."
+        exit 1
+    fi
+}
+
+cmd_stop() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "${C_YELLOW}[INFO]${C_RESET} Terminating Void process (PID: $PID)..."
+            kill -15 "$PID" 2>/dev/null || kill -9 "$PID" 2>/dev/null
+            rm -f "$PID_FILE"
+            echo -e "${C_GREEN}[SUCCESS]${C_RESET} Void service halted."
+            exit 0
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    # Check for any rogue instances
+    ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
+    if [ -n "$ROGUE_PIDS" ]; then
+        echo -e "${C_YELLOW}[INFO]${C_RESET} Halting active Void processes: $ROGUE_PIDS"
+        kill -15 $ROGUE_PIDS 2>/dev/null || true
+        echo -e "${C_GREEN}[SUCCESS]${C_RESET} Stopped."
+    else
+        echo -e "${C_CYAN}[INFO]${C_RESET} No running Void instances found."
+    fi
+}
+
+cmd_status() {
+    show_banner
+    RUNNING=0
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            RUNNING=1
+            echo -e "● Status:        ${C_GREEN}ACTIVE (Running, PID: $PID)${C_RESET}"
+            # Extract memory RSS
+            if command -v ps >/dev/null 2>&1; then
+                RSS_KB=$(ps -p "$PID" -o rss= 2>/dev/null | tr -d ' ' || echo "0")
+                if [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt 0 ] 2>/dev/null; then
+                    RSS_MB=$(awk "BEGIN {printf \"%.2f\", $RSS_KB/1024}")
+                    echo -e "● Memory RSS:    ${C_CYAN}${RSS_MB} MB${C_RESET} (Target: < 50MB)"
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$RUNNING" -eq 0 ]; then
+        echo -e "● Status:        ${C_RED}INACTIVE (Stopped)${C_RESET}"
+    fi
+
+    echo -e "● Dashboard:     ${C_CYAN}http://localhost:5000${C_RESET}"
+    echo -e "● Cloud UI:      ${C_CYAN}https://ashishsinghbora.github.io/void/${C_RESET}"
+
+    # Termux API check
+    if command -v termux-battery-status >/dev/null 2>&1; then
+        echo ""
+        echo -e "${C_BOLD}Hardware Telemetry:${C_RESET}"
+        BATT=$(termux-battery-status 2>/dev/null || true)
+        if [ -n "$BATT" ]; then
+            PCT=$(echo "$BATT" | jq -r '.percentage' 2>/dev/null || echo "N/A")
+            STAT=$(echo "$BATT" | jq -r '.status' 2>/dev/null || echo "N/A")
+            echo -e "  • Battery:     ${PCT}% (${STAT})"
+        fi
+    fi
+}
+
+cmd_test() {
+    cd "$VOID_DIR"
+    echo -e "${C_CYAN}[INFO]${C_RESET} Running Void test suite..."
+    exec "$PYTHON_BIN" -m pytest -v "$@"
+}
+
+cmd_clean() {
+    cd "$VOID_DIR"
+    echo -e "${C_CYAN}[INFO]${C_RESET} Executing Void Storage Cleaner..."
+    "$PYTHON_BIN" -c "from extensions.system_cleaner import SystemCleanerStrategy; print(SystemCleanerStrategy().run_safe(dry_run=False).output['summary'])"
+}
+
+cmd_update() {
+    cd "$VOID_DIR"
+    echo -e "${C_CYAN}[INFO]${C_RESET} Pulling latest code from GitHub..."
+    git pull origin main
+    echo -e "${C_CYAN}[INFO]${C_RESET} Syncing Python dependencies..."
+    "$PYTHON_BIN" -m pip install -r requirements.txt
+    echo -e "${C_GREEN}[SUCCESS]${C_RESET} Void is up to date!"
+}
+
+# Subcommand dispatch
+SUBCMD="${1:-cli}"
+shift || true
+
+case "$SUBCMD" in
+    cli)
+        cmd_cli "$@"
+        ;;
+    start)
+        cmd_start "$@"
+        ;;
+    start-bg)
+        cmd_start_bg "$@"
+        ;;
+    stop)
+        cmd_stop "$@"
+        ;;
+    status)
+        cmd_status "$@"
+        ;;
+    test)
+        cmd_test "$@"
+        ;;
+    clean)
+        cmd_clean "$@"
+        ;;
+    update)
+        cmd_update "$@"
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo -e "${C_RED}[ERROR]${C_RESET} Unknown command: '$SUBCMD'"
+        show_help
+        exit 1
+        ;;
+esac

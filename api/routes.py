@@ -139,3 +139,14 @@ def get_photo():
         if os.path.exists(p) and os.path.getsize(p) > 0:
             return send_file(p, mimetype="image/jpeg")
     return "Photo not found", 404
+
+
+@api_bp.route("/api/extensions")
+def list_extensions():
+    """Returns metadata of all loaded extensions."""
+    try:
+        from extensions.manager import global_extension_manager
+        return jsonify(global_extension_manager.list_extensions()), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+

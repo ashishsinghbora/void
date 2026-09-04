@@ -19,11 +19,12 @@ from core.simulator import TermuxHardwareSimulator
 
 logger = logging.getLogger("VoidAdvancedCore.Executor")
 
-TERMUX_BIN_PATH = "/data/data/com.termux/files/usr/bin"
+PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+TERMUX_BIN_PATH = os.path.join(PREFIX, "bin") if os.path.exists(PREFIX) else "/data/data/com.termux/files/usr/bin"
 if os.path.exists(TERMUX_BIN_PATH) and TERMUX_BIN_PATH not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"{TERMUX_BIN_PATH}{os.pathsep}{os.environ.get('PATH', '')}"
 
-IS_TERMUX = os.path.exists("/data/data/com.termux")
+IS_TERMUX = os.path.exists("/data/data/com.termux") or "com.termux" in os.environ.get("PREFIX", "")
 
 
 class ICommand(ABC):

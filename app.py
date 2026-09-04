@@ -13,7 +13,8 @@ import argparse
 import threading
 
 # Prepend Termux binaries path dynamically
-TERMUX_BIN_PATH = "/data/data/com.termux/files/usr/bin"
+PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+TERMUX_BIN_PATH = os.path.join(PREFIX, "bin") if os.path.exists(PREFIX) else "/data/data/com.termux/files/usr/bin"
 if os.path.exists(TERMUX_BIN_PATH) and TERMUX_BIN_PATH not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"{TERMUX_BIN_PATH}{os.pathsep}{os.environ.get('PATH', '')}"
 

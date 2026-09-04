@@ -321,6 +321,7 @@ If you encounter `Failed to build cryptography` or `Target triple not supported 
 >
 > 1. Install **Termux**: [F-Droid Package](https://f-droid.org/packages/com.termux/) or [GitHub Releases](https://github.com/termux/termux-app/releases)
 > 2. Install **Termux:API**: [F-Droid Package](https://f-droid.org/packages/com.termux.api/) or [GitHub Releases](https://github.com/termux/termux-api/releases)
+> 3. **CRITICAL STEP (Awaken Termux:API Bridge):** After installing Termux:API from F-Droid, **open the "Termux:API" app once from your Android app drawer**. On modern Android versions (Android 10+), newly installed APKs remain in a dormant "stopped" state until opened manually at least once; opening it once allows Android to route IPC sensor broadcasts from Void without socket timeout hangs.
 
 ### 3. Grant Android System Permissions
 Navigate to your device's **Android Settings** $\to$ **Apps** $\to$ **Termux:API** $\to$ **Permissions** and enable:

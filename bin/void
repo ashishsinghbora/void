@@ -165,15 +165,30 @@ cmd_status() {
     echo -e "● Dashboard:     ${C_CYAN}http://localhost:5000${C_RESET}"
     echo -e "● Cloud UI:      ${C_CYAN}https://ashishsinghbora.github.io/void/${C_RESET}"
 
-    # Termux API check
+    # Termux API check (bounded by 2s timeout to prevent terminal hang)
     if command -v termux-battery-status >/dev/null 2>&1; then
         echo ""
         echo -e "${C_BOLD}Hardware Telemetry:${C_RESET}"
-        BATT=$(termux-battery-status 2>/dev/null || true)
-        if [ -n "$BATT" ]; then
+        BATT=""
+        if command -v timeout >/dev/null 2>&1; then
+            BATT=$(timeout 2s termux-battery-status 2>/dev/null || true)
+        elif [ -n "$PYTHON_BIN" ] && [ -x "$PYTHON_BIN" ]; then
+            BATT=$("$PYTHON_BIN" -c "
+import subprocess
+try:
+    res = subprocess.run(['termux-battery-status'], capture_output=True, text=True, timeout=2)
+    print(res.stdout)
+except Exception:
+    pass
+" 2>/dev/null || true)
+        fi
+
+        if [ -n "$BATT" ] && [[ "$BATT" == *"percentage"* ]]; then
             PCT=$(echo "$BATT" | jq -r '.percentage' 2>/dev/null || echo "N/A")
             STAT=$(echo "$BATT" | jq -r '.status' 2>/dev/null || echo "N/A")
             echo -e "  • Battery:     ${PCT}% (${STAT})"
+        else
+            echo -e "  • Battery:     ${C_YELLOW}Standby (Open Termux:API app to activate bridge)${C_RESET}"
         fi
     fi
 }

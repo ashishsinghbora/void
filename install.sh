@@ -63,8 +63,8 @@ if [ "$IS_TERMUX" -eq 1 ]; then
     log_info "Updating Termux package repositories..."
     pkg update -y || true
 
-    log_info "Installing core prerequisites: termux-api, python, git, clang, libffi, openssl, jq, curl..."
-    pkg install -y termux-api python git clang libffi openssl jq curl
+    log_info "Installing core prerequisites: termux-api, python, git, clang, libffi, openssl, jq, curl, coreutils..."
+    pkg install -y termux-api python git clang libffi openssl jq curl coreutils
     # Install pre-compiled cryptography binary from Termux pkg (avoids rust compilation)
     pkg install -y python-cryptography >/dev/null 2>&1 || true
 
@@ -92,23 +92,76 @@ if [ "$IS_TERMUX" -eq 1 ]; then
         termux-wake-unlock >/dev/null 2>&1 || true
     fi
 
-    # Test Termux:API Companion APK
-    log_info "Testing Termux:API companion service..."
-    if ! termux-battery-status >/dev/null 2>&1; then
-        echo ""
-        log_warning "Termux:API CLI tool is installed, but Android returned an error."
-        echo -e "${C_YELLOW}================================================================${C_RESET}"
-        echo -e "${C_BOLD}ACTION REQUIRED: Install Termux & Termux:API via F-Droid${C_RESET}"
-        echo -e "Both Termux and Termux:API MUST be installed from F-Droid (or GitHub Releases)."
-        echo -e "Do NOT use Google Play Store (signature mismatch & missing API bridge)."
-        echo -e "1. Download Termux:API from F-Droid:"
-        echo -e "   ${C_CYAN}https://f-droid.org/packages/com.termux.api/${C_RESET}"
-        echo -e "2. Grant permissions in Android Settings -> Apps -> Termux:API"
-        echo -e "   (Camera, Contacts, SMS, Location)"
-        echo -e "${C_YELLOW}================================================================${C_RESET}"
-        echo ""
+    # Safe execution helper with strict timeout to prevent any hangs
+    safe_exec() {
+        local max_sec="$1"
+        shift
+        if command -v timeout >/dev/null 2>&1; then
+            timeout "${max_sec}s" "$@"
+        elif command -v python3 >/dev/null 2>&1; then
+            python3 -c "
+import subprocess, sys
+try:
+    res = subprocess.run(sys.argv[1:], capture_output=True, timeout=float('$max_sec'))
+    sys.exit(res.returncode)
+except Exception:
+    sys.exit(124)
+" "$@"
+        else
+            "$@"
+        fi
+    }
+
+    # Test Termux:API Companion APK (F-Droid optimized with non-blocking timeout)
+    log_info "Diagnosing F-Droid Termux:API companion bridge..."
+
+    # Check if com.termux.api companion APK package is installed on Android
+    API_APK_INSTALLED=0
+    if command -v pm >/dev/null 2>&1; then
+        if pm list packages 2>/dev/null | grep -q "com.termux.api"; then
+            API_APK_INSTALLED=1
+        fi
+    fi
+
+    # Attempt to awaken Termux:API background service if installed from F-Droid
+    if [ "$API_APK_INSTALLED" -eq 1 ]; then
+        log_info "F-Droid companion package 'com.termux.api' detected. Initializing IPC service..."
+        am startservice com.termux.api/.TermuxApiService >/dev/null 2>&1 || true
+    fi
+
+    # Probe hardware bridge with strict 3-second timeout so script NEVER hangs
+    API_VERIFIED=0
+    if command -v termux-battery-status >/dev/null 2>&1; then
+        if safe_exec 3 termux-battery-status >/dev/null 2>&1; then
+            API_VERIFIED=1
+        fi
+    fi
+
+    if [ "$API_VERIFIED" -eq 1 ]; then
+        log_success "F-Droid Termux:API communication verified successfully!"
     else
-        log_success "Termux:API communication verified successfully."
+        echo ""
+        log_warning "Termux:API companion service is not responding yet."
+        echo -e "${C_YELLOW}================================================================${C_RESET}"
+        if [ "$API_APK_INSTALLED" -eq 1 ]; then
+            echo -e "${C_BOLD}F-Droid Termux:API App Detected (Action Recommended):${C_RESET}"
+            echo -e "Android requires newly installed apps to be opened at least once to wake up."
+            echo -e "1. Open the ${C_CYAN}Termux:API${C_RESET} app once from your Android app drawer."
+            echo -e "2. Check permissions in Android Settings -> Apps -> Termux:API."
+        else
+            echo -e "${C_BOLD}ACTION REQUIRED: Install Termux:API from F-Droid${C_RESET}"
+            echo -e "Both Termux and Termux:API MUST be installed from F-Droid (or GitHub Releases)."
+            echo -e "Do NOT use Google Play Store (signature mismatch & missing API bridge)."
+            echo -e "1. Download Termux:API from F-Droid:"
+            echo -e "   ${C_CYAN}https://f-droid.org/packages/com.termux.api/${C_RESET}"
+            echo -e "2. Open the Termux:API app once from your app drawer."
+            echo -e "3. Grant permissions in Android Settings -> Apps -> Termux:API."
+        fi
+        echo -e "----------------------------------------------------------------"
+        echo -e "💡 ${C_BOLD}No worries!${C_RESET} Void will install seamlessly and use graceful"
+        echo -e "   hardware simulation fallback until the Termux:API app is opened."
+        echo -e "${C_YELLOW}================================================================${C_RESET}"
+        echo ""
     fi
 else
     # Linux / macOS host prerequisite validation

@@ -107,6 +107,14 @@ class PermissionManager:
     """Manages transparent permission auditing and user-centric justification reports."""
 
     @classmethod
+    def is_termux_api_responsive(cls) -> bool:
+        """Fast non-blocking probe to verify if Termux:API companion APK is responsive."""
+        if not IS_TERMUX:
+            return True
+        res = SecureCommandExecutor.run(["termux-battery-status"], timeout=2, allow_simulation=False)
+        return not res.startswith("Error")
+
+    @classmethod
     def check_permission(cls, perm_key: str) -> bool:
         """Probes the live status of an Android hardware permission."""
         if not IS_TERMUX:
@@ -117,24 +125,29 @@ class PermissionManager:
             return os.path.exists(os.path.expanduser("~/storage"))
         elif perm_key == "wake_lock":
             return True  # Managed via termux-wake-lock
-        elif perm_key == "camera":
-            # Test if termux-camera-info is available or returns valid JSON
-            res = SecureCommandExecutor.run(["termux-camera-info"], allow_simulation=False)
-            return not res.startswith("Error") and res.startswith("[")
-        elif perm_key == "sms":
-            res = SecureCommandExecutor.run(["termux-sms-list", "-l", "1"], allow_simulation=False)
-            return not res.startswith("Error")
-        elif perm_key == "contacts":
-            res = SecureCommandExecutor.run(["termux-contact-list"], allow_simulation=False)
-            return not res.startswith("Error")
-        elif perm_key == "location":
-            res = SecureCommandExecutor.run(["termux-location", "-p", "network", "-r", "last"], allow_simulation=False)
-            return not res.startswith("Error")
-        elif perm_key == "telephony":
-            res = SecureCommandExecutor.run(["termux-telephony-deviceinfo"], allow_simulation=False)
-            return not res.startswith("Error")
         elif perm_key == "microphone":
             return True  # Probing microphone would trigger an audible recording
+
+        # If Termux:API companion app is unresponsive or in stopped state, fail fast without hanging
+        if not cls.is_termux_api_responsive():
+            return False
+
+        if perm_key == "camera":
+            # Test if termux-camera-info is available or returns valid JSON
+            res = SecureCommandExecutor.run(["termux-camera-info"], timeout=2, allow_simulation=False)
+            return not res.startswith("Error") and res.startswith("[")
+        elif perm_key == "sms":
+            res = SecureCommandExecutor.run(["termux-sms-list", "-l", "1"], timeout=2, allow_simulation=False)
+            return not res.startswith("Error")
+        elif perm_key == "contacts":
+            res = SecureCommandExecutor.run(["termux-contact-list"], timeout=2, allow_simulation=False)
+            return not res.startswith("Error")
+        elif perm_key == "location":
+            res = SecureCommandExecutor.run(["termux-location", "-p", "network", "-r", "last"], timeout=2, allow_simulation=False)
+            return not res.startswith("Error")
+        elif perm_key == "telephony":
+            res = SecureCommandExecutor.run(["termux-telephony-deviceinfo"], timeout=2, allow_simulation=False)
+            return not res.startswith("Error")
         return False
 
     @classmethod

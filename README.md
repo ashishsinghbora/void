@@ -4,14 +4,14 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Termux%20%7C%20Linux-cyan.svg)](https://termux.dev)
-[![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2030MB-emerald.svg)](#-memory-benchmarks--performance)
-[![Tests](https://img.shields.io/badge/tests-49%2F49%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
-[![UI](https://img.shields.io/badge/control-Terminal%20CLI%20%2B%20Telegram-purple.svg)](#-rich-telegram-bot-control-hub)
+[![Platform](https://img.shields.io/badge/platform-Android%20(Termux)%20%7C%20Linux-cyan.svg)](https://termux.dev)
+[![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2030MB%20(Verified)-emerald.svg)](#-memory-benchmarks--efficiency)
+[![Tests](https://img.shields.io/badge/tests-51%2F51%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Control](https://img.shields.io/badge/control-Rich%20TUI%20%2B%20Telegram%20Bot-purple.svg)](#-rich-tui--telegram-control)
 
-**Void** is a hyper-minimalist, terminal-and-Telegram-native autonomous Android orchestrator engineered for mobile edge computing. Inspired by ultra-lightweight agent frameworks (like OpenClaw), Void eliminates all heavy web server bloat (zero Flask, zero WSGI, zero HTML/SSE overhead), running as an ultra-lean local daemon controlled exclusively through an interactive terminal session and a rich, interactive Telegram Bot interface.
+**Void** is a hyper-minimalist, terminal-and-Telegram-native autonomous Android orchestrator engineered for mobile edge computing. Inspired by ultra-lightweight agent frameworks (like OpenClaw), Void eliminates all heavy web server bloat (zero Flask, zero WSGI, zero HTML/SSE overhead), starting with **zero default extensions** and running as an ultra-lean local daemon controlled exclusively through an interactive rich TUI and an interactive Telegram Bot interface.
 
-[One-Line Install](#-one-line-zero-friction-installer) • [Architecture](#-architectural-pivot--zero-web-bloat) • [CLI Commands](#-unified-cli-commands) • [Telegram Control](#-rich-telegram-bot-control-hub) • [FastFetch](#-visual-fastfetch-telemetry) • [Local LLM Bootstrapper](#-autonomous-local-model-bootstrapper) • [Social & Cross-App Tools](#-social-media--cross-app-automation) • [Testing](#-automated-testing--verification)
+[One-Line Install](#-one-line-zero-friction-installer) • [Directory Blueprint](#-refactored-directory-blueprint) • [F-Droid Setup](#-f-droid-prerequisites-termux--termuxapi) • [Telegram Bot Setup](#-frictionless-telegram-bot-setup-wizard) • [CLI Commands & Rich TUI](#-unified-cli--rich-tui) • [Dynamic Plugin Store](#-on-demand-dynamic-plugin-store) • [Local LLM Bootstrapper](#-autonomous-local-model-bootstrapper) • [Troubleshooting](#-android-permissions--troubleshooting)
 
 </div>
 
@@ -26,115 +26,181 @@ curl -sSL https://raw.githubusercontent.com/ashishsinghbora/void/main/install.sh
 ```
 
 > [!TIP]
-> To update or reinstall to the latest build on Termux:
+> To update or reinstall to the latest clean build on Termux:
 > ```bash
 > rm -rf ~/void && curl -sSL https://raw.githubusercontent.com/ashishsinghbora/void/main/install.sh | bash
 > ```
 
 ---
 
-## 🏛️ Architectural Pivot: Zero-Web-Bloat
+## 📂 Refactored Directory Blueprint
 
-Void has been re-architected from the ground up for maximum edge efficiency and security:
+Void's architecture enforces strict separation of concerns, zero pre-bundled extension bloat, and low-memory data structures:
 
-| Feature / Metric | Legacy Web Agent | Void Ultra-Lean Edge Platform |
-| :--- | :--- | :--- |
-| **Control Planes** | Heavy Flask / Waitress / HTML / SSE | **Interactive Terminal CLI + Rich Telegram Bot** |
-| **RAM RSS Footprint** | ~75 MB – 120 MB | **< 30 MB RAM** |
-| **Dependencies** | Flask, Waitress, Jinja2, Werkzeug, etc. | **`pyTelegramBotAPI`, `requests`, `pytest`** |
-| **Port Conflicts** | Socket collision (`Errno 98`), port 5000 | **Zero open network ports required** |
-| **Model Runtime** | Cloud API or bulky dependencies | **Local Quantized GGUF / Needle + Heuristic Fallback** |
-| **Hardware Bridge** | HTTP Polling | **Zero-overhead direct IPC (`termux-api` vectors)** |
+```text
+void/
+├── bin/
+│   └── void                    # Unified CLI command dispatcher (cli, fastfetch, plugins, setup-bot)
+├── core/
+│   ├── agent_engine.py         # Advanced agent engine with bounded ReAct state loops
+│   ├── bot_setup.py            # Frictionless Telegram setup wizard & Admin ID auto-detection
+│   ├── command_executor.py     # Secure argument-vector subprocess executor with Termux IPC
+│   ├── event_bus.py            # Pub/sub event streaming bus
+│   ├── fastfetch.py            # ASCII & Unicode FastFetch telemetry collector
+│   ├── lru_cache.py            # Bounded LRU query cache (O(1) lookups)
+│   ├── model_manager.py        # Small-model bootstrapper (SmolLM, Needle, Qwen GGUF)
+│   └── types.py                # Strongly-typed ReAct dataclasses with __slots__
+├── agents/
+│   ├── react_agent.py          # Autonomous ReAct loop with heuristic fallback router
+│   ├── prompt_processor.py     # Natural language tokenizer & intent preprocessor
+│   └── fallback_handler.py     # Hardware error recovery & alternative tool suggestion
+├── extensions/
+│   ├── base.py                 # Abstract ExtensionPlugin base class
+│   └── manager.py              # Dynamic on-demand plugin downloader & AST verification
+├── security/
+│   ├── sanitizer.py            # Strict argument & query sanitization
+│   ├── credential_vault.py     # AES-256 encrypted credential vault
+│   ├── rate_limiter.py         # Token-bucket rate limiter & session manager
+│   └── permissions.py          # Android permission governance & privacy audit
+├── storage/
+│   ├── sqlite_db.py            # Thread-safe SQLite wrapper with Write-Ahead Logging (WAL)
+│   ├── repository.py           # Repositories for conversations, logs, telemetry
+│   └── log_pruner.py           # Sliding-window log pruner (guarantees DB < 5MB)
+├── telegram/
+│   └── bot_controller.py       # Rich Telegram bot UI with interactive inline keyboards
+├── tools/
+│   ├── base.py                 # Strategy pattern base class
+│   ├── hardware.py             # Battery, torch, vibration, volume, display
+│   ├── telephony.py            # SMS send/receive, call, contacts, call log
+│   ├── media.py                # Camera photo capture, text-to-speech, audio
+│   ├── system.py               # Toasts, notifications, clipboard, GPS, wifi, native storage clean
+│   ├── social_apps.py          # WhatsApp deep-links, Telegram chats, Instagram/LinkedIn/GitHub
+│   └── registry.py             # Hash-indexed strategy pattern tool registry
+├── app.py                      # Lean daemon supervisor & Telegram bot launcher
+├── install.sh                  # One-line zero-friction bootstrap installer
+├── requirements.txt            # Minimal dependencies: pyTelegramBotAPI, requests, pytest
+└── termux_void.py              # Immersive rich TUI with ANSI colors & live spinners
+```
 
 ---
 
-## ⚡ Unified CLI Commands
+## 📱 F-Droid Prerequisites (Termux + Termux:API)
 
-The global `void` command provides single-keystroke control over the entire edge stack:
+For complete Android hardware integration, install Termux and the companion API from **F-Droid** (do **NOT** use Google Play Store):
+
+1. **Install Termux from F-Droid:**
+   - Download: [F-Droid Termux](https://f-droid.org/packages/com.termux/)
+2. **Install Termux:API from F-Droid:**
+   - Download: [F-Droid Termux:API](https://f-droid.org/packages/com.termux.api/)
+3. **Initialize the Companion App (Important):**
+   - Open the **Termux:API** app from your Android app drawer **at least once** so Android wakes up the IPC service.
+   - Go to Android **Settings -> Apps -> Termux:API -> Permissions** and grant desired permissions (Camera, Storage, SMS, Location). All permissions are 100% optional; Void gracefully falls back to simulation mode if ungranted.
+
+---
+
+## 🤖 Frictionless Telegram Bot Setup Wizard
+
+Void eliminates the hassle of configuring Telegram bots and finding your numeric User ID:
 
 ```bash
-# 1. Interactive ReAct Terminal Assistant (default)
+void setup-bot
+```
+
+### What the wizard automates:
+1. **Token Validation:** Verifies token format and calls Telegram's `getMe` API to confirm bot identity.
+2. **Instant Admin ID Auto-Detection:**
+   - Prompts you to open your bot on Telegram and send any message (or tap `/start`).
+   - Listens to incoming updates and automatically extracts your Telegram User ID and username.
+   - Whitelists your ID instantly so nobody else can control your phone.
+3. **Confirmation Ping:** Sends an instant verification greeting directly to your Telegram chat.
+4. **Secure Persistence:** Saves credentials to `~/.void/config.env` with `0600` permissions (readable strictly by you).
+
+---
+
+## ⚡ Unified CLI & Rich TUI
+
+Launch Void's interactive Terminal User Interface (TUI):
+
+```bash
 void
 # or explicitly:
 void cli
-
-# 2. Visual ASCII / Unicode FastFetch Telemetry
-void fastfetch
-
-# 3. Inspect Local Small-Model Catalog & Weights
-void models
-
-# 4. Start Background Daemon Supervisor & Telegram Bot (foreground)
-void start
-
-# 5. Start Void as a Background 24/7 Service (nohup daemon)
-void start-bg
-
-# 6. Check Active Daemon Status, Memory RSS & Battery
-void status
-
-# 7. Stop Background Daemon Cleanly
-void stop
-
-# 8. Run Full Automated Test Suite (49/49 tests)
-void test
-
-# 9. Clean Temporary Caches & Storage
-void clean
-
-# 10. Inspect Android Privacy & Permissions Status
-void permissions
-
-# 11. Pull Latest Updates from GitHub
-void update
 ```
+
+### Immersive TUI Features:
+- **ANSI Status Badge:** Real-time indicator for Host OS, RAM RSS, active model engine, and active plugin count.
+- **Animated Deliberation Spinner:** Background spinner (`⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`) active during ReAct reasoning cycles.
+- **Structured Execution Tables:** Unicode tables displaying step numbers, tool actions, statuses, and execution latencies in milliseconds.
+- **Built-in Slash Commands:**
+  - `/fastfetch` — Inline ASCII system telemetry
+  - `/plugins` — Dynamic plugin manager (`list`, `search`, `install`, `remove`)
+  - `/models` — Local quantized model catalog & weight manager
+  - `/download <id>` — Stream model weights with live CLI progress bar
+  - `/battery`, `/torch`, `/clean`, `/clear`, `/help`, `/exit`
+- **Command History:** Persistent history via `readline` (Up/Down arrow navigation).
 
 ---
 
-## 📱 Rich Telegram Bot Control Hub
+## 🧩 On-Demand Dynamic Plugin Store
 
-Control your Android phone remotely with bank-grade security, whitelisted admin access, rate limiting, and interactive inline keyboards:
+Void starts completely lean with **zero extensions loaded by default**. You choose what to install:
 
-```
-╭─────────────────────────────────────────╮
-│  ⚡ VOID EDGE REMOTE CONTROL HUB        │
-├────────────────────┬────────────────────┤
-│  🔦 Torch [OFF]    │  🔋 Battery Meter  │
-├────────────────────┼────────────────────┤
-│  📸 Take Photo     │  🧹 Clean Storage  │
-├────────────────────┼────────────────────┤
-│  ⚡ FastFetch      │  📋 Recent Logs    │
-├────────────────────┼────────────────────┤
-│  🚀 Apps Hub       │  🧠 Model Status   │
-╰────────────────────┴────────────────────╯
-```
-
-### Interactive Telegram Commands & Callbacks:
-- **`🔦 Torch Toggle`**: Instantly switches phone camera flashlight ON or OFF and updates button state.
-- **`🔋 Battery Meter`**: Real-time battery %, charge state, and temperature alert.
-- **`📸 Take Photo`**: Captures photo using front or back camera and **sends the image directly into Telegram** via `bot.send_photo`.
-- **`⚡ FastFetch`**: Renders full Unicode system telemetry, process RSS, and daemon health directly in chat.
-- **`🧹 Clean Storage`**: Executes safe cache cleanup and reports freed disk space.
-- **`🚀 Apps Hub`**: Quick submenu to launch WhatsApp, Telegram, Camera, YouTube, Chrome, or Settings on the device.
-- **`🧠 Model Status`**: Shows active model engine and available downloads.
-- **`/download <model_id>`**: Triggers streaming background download of local model weights with a live progress bar updated in Telegram.
-
-### Launching with Telegram Bot:
+### CLI Commands:
 ```bash
-# Pass credentials via CLI:
-void start --telegram YOUR_BOT_TOKEN --admin-id YOUR_TELEGRAM_USER_ID
+# 1. List active plugins (starts at 0)
+void plugins
 
-# Or configure via environment variables:
-export TELEGRAM_TOKEN="YOUR_BOT_TOKEN"
-export ADMIN_TELEGRAM_ID="YOUR_TELEGRAM_USER_ID"
-void start-bg
+# 2. Search community plugins catalog
+void plugins search crypto
+
+# 3. Install community plugin on-demand
+void plugin install crypto_tracker
+
+# 4. Uninstall plugin cleanly
+void plugin remove crypto_tracker
+```
+
+### Telegram Bot Plugin Store:
+Open your bot and send `/plugins` or tap **`🧩 Plugin Store`** from the interactive dashboard. You can install or remove extensions with a single tap.
+
+### Verified Community Plugins:
+- **`crypto_tracker`**: Real-time cryptocurrency market prices (BTC, ETH, SOL, DOGE, XRP).
+- **`github_monitor`**: GitHub repository stars, forks, issues, and commit tracking.
+- **`weather_brief`**: Local meteorological forecasts, temperature, and condition reports.
+
+### Security Sandbox:
+- **SHA256 Integrity Verification:** Checksums are computed and validated before code activation.
+- **Static AST Inspection:** Validates Python AST to prevent malformed syntax or non-plugin code from loading.
+- **Sandboxed Storage:** All user extensions live in `~/.void/extensions/` and can be removed anytime.
+
+---
+
+## 🧠 Autonomous Local Model Bootstrapper
+
+Void features an autonomous `ModelManager` located in `core/model_manager.py` that discovers, verifies, and downloads quantized small models:
+
+| Model ID | Base Architecture | RAM Footprint | Best Suited For |
+| :--- | :--- | :--- | :--- |
+| `smollm-135m` | SmolLM-135M-Instruct-Q4 GGUF | **< 90 MB RAM** | Ultra-fast local edge execution |
+| `needle-compact`| Needle-Edge Compact Binary | **< 30 MB RAM** | Vectorized hardware tool dispatch |
+| `qwen-0.5b` | Qwen2.5-0.5B-Instruct-Q4 GGUF | **< 380 MB RAM** | Multi-step reasoning & tool calling |
+
+```bash
+# View model catalog:
+void models
+
+# Download model directly in terminal:
+void download smollm-135m
 ```
 
 ---
 
 ## 📊 Visual FastFetch Telemetry
 
-Void includes a built-in `FastFetchCollector` that provides instant system diagnostics:
+Run anytime in your terminal:
+```bash
+void fastfetch
+```
 
 ```text
 ╭───────────────────────────────────────────────────────────╮
@@ -153,55 +219,29 @@ Void includes a built-in `FastFetchCollector` that provides instant system diagn
                           Daemons     │ NotifDaemon, Cron
 ```
 
-Run anytime in your terminal with:
+Or view directly inside Telegram with `/fastfetch`!
+
+---
+
+## 🛡️ Android Permissions & Troubleshooting
+
+### Silent Wake-Lock & Notification Suppression
+When running background daemons 24/7, Termux acquires a CPU wake-lock (`termux-wake-lock`). If you do not want background wake-locks, start Void with:
 ```bash
-void fastfetch
+void start-bg --no-wake-lock
 ```
 
----
+### Permission Governance
+Run `void permissions` to inspect the status, rationale, and privacy impact of every Android hardware permission:
+```bash
+void permissions
+```
 
-## 🧠 Autonomous Local Model Bootstrapper
-
-Void integrates a dedicated `ModelManager` located in `core/model_manager.py` that discovers, verifies, and downloads quantized small models to `~/.void/models/`:
-
-| Model Identifier | Architecture | RAM Footprint | Best Suited For |
-| :--- | :--- | :--- | :--- |
-| `smollm-135m` | SmolLM-135M-Instruct-Q4 GGUF | **< 90 MB RAM** | Ultra-fast local edge execution |
-| `needle-compact`| Needle-Edge Compact Binary | **< 30 MB RAM** | Vectorized hardware tool dispatch |
-| `qwen-0.5b` | Qwen2.5-0.5B-Instruct-Q4 GGUF | **< 380 MB RAM** | Multi-step reasoning & tool calling |
-
-### Features:
-- **Resilient Streaming Downloads:** Chunked downloads via `requests` with live percentage and speed callbacks (CLI and Telegram).
-- **SHA256 Integrity Verification:** Automatically validates checksums before activating weights.
-- **Zero-Latency Heuristic Fallback:** If models are offline or downloading, Void automatically routes user directives through its zero-weight ReAct heuristic state machine.
-
----
-
-## 🌐 Social Media & Cross-App Automation
-
-Void includes first-class tools for mobile application dispatch and cross-app communication (`tools/social_apps.py`):
-
-1. **`send_whatsapp_message`**:
-   - Opens WhatsApp with a pre-filled message draft to any phone number.
-   - Example directive: `"whatsapp +15551234567 saying I am on my way"`
-2. **`open_telegram_chat`**:
-   - Opens direct chat with any user or channel.
-   - Example directive: `"open telegram chat with durov"`
-3. **`open_social_profile`**:
-   - Direct profile navigation for Instagram, LinkedIn, GitHub, or X.
-   - Example directive: `"open github profile ashishsinghbora/void"`
-4. **`launch_installed_app`**:
-   - Launches any installed Android app via package intent with smart alias matching (`whatsapp`, `youtube`, `camera`, `settings`, `spotify`, `chrome`, etc.).
-   - Example directive: `"launch camera"`, `"open settings"`
-
----
-
-## 🛡️ Security, Privacy & Android Permissions
-
-- **100% On-Device:** Zero data is transmitted to external telemetry servers. All conversations and execution logs reside in local SQLite databases (`~/.void_agent.db`) configured with Write-Ahead Logging (WAL).
-- **Arg-Vector Sanitization:** All tool directives execute via tokenized argument vectors (`subprocess.run(["cmd", arg])`), eliminating command injection vulnerabilities.
-- **Silent Wake-Lock Management:** Background wake-locks (`termux-wake-lock`) can be disabled via `--no-wake-lock` to suppress foreground notification sounds.
-- **Permission Transparency:** Type `void permissions` anytime to view the rationale, scope, and status of every Android hardware permission.
+### Termux:API Companion Bridge Diagnostic
+If hardware commands (e.g. `termux-battery-status`) return nothing:
+1. Ensure both **Termux** and **Termux:API** were installed from **F-Droid**.
+2. Open the **Termux:API** application once from your Android app drawer.
+3. Check **Settings -> Battery -> Unrestricted** for Termux and Termux:API to prevent Android battery optimizations from killing background workers.
 
 ---
 
@@ -215,23 +255,23 @@ void test
 
 ```text
 ============================= test session starts ==============================
-platform linux -- Python 3.14.7, pytest-9.1.1
-collected 49 items
+collected 51 items
 
-tests/test_daemons.py ...                                                [  6%]
-tests/test_extensions.py .......                                         [ 20%]
-tests/test_fastfetch.py ...                                              [ 26%]
-tests/test_lru_cache.py ...                                              [ 32%]
-tests/test_model_manager.py ....                                         [ 40%]
-tests/test_react_agent.py ...                                            [ 46%]
-tests/test_security.py ........                                          [ 63%]
-tests/test_simulator.py ..                                               [ 67%]
-tests/test_social_apps.py .....                                          [ 77%]
-tests/test_storage.py ...                                                [ 83%]
-tests/test_telegram_bot.py ....                                          [ 91%]
+tests/test_bot_setup.py ...                                              [  5%]
+tests/test_daemons.py ...                                                [ 11%]
+tests/test_extensions.py ......                                          [ 23%]
+tests/test_fastfetch.py ...                                              [ 29%]
+tests/test_lru_cache.py ...                                              [ 35%]
+tests/test_model_manager.py ....                                         [ 43%]
+tests/test_react_agent.py ...                                            [ 49%]
+tests/test_security.py ........                                          [ 64%]
+tests/test_simulator.py ..                                               [ 68%]
+tests/test_social_apps.py .....                                          [ 78%]
+tests/test_storage.py ...                                                [ 84%]
+tests/test_telegram_bot.py ....                                          [ 92%]
 tests/test_tools.py ....                                                 [100%]
 
-============================= 49 passed in 16.65s ==============================
+============================= 51 passed in 10.65s ==============================
 ```
 
 ---

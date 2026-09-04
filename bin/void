@@ -56,13 +56,15 @@ show_help() {
     echo -e "${C_BOLD}Usage:${C_RESET} void <command> [options]"
     echo ""
     echo -e "${C_BOLD}Commands:${C_RESET}"
-    echo -e "  ${C_CYAN}cli${C_RESET}                Launch interactive ReAct terminal session (default)"
+    echo -e "  ${C_CYAN}cli${C_RESET}                Launch interactive ReAct TUI session (default)"
     echo -e "  ${C_CYAN}fastfetch${C_RESET}          Display visual ASCII/Unicode system & edge telemetry"
+    echo -e "  ${C_CYAN}setup-bot${C_RESET}          Run interactive Telegram bot wizard with Admin ID auto-detection"
+    echo -e "  ${C_CYAN}plugins${C_RESET}            Manage dynamic extensions (list, search, install, remove)"
+    echo -e "  ${C_CYAN}models${C_RESET}             List installed local small-model weights & catalog"
     echo -e "  ${C_CYAN}start${C_RESET}              Start background daemons & Telegram bot (foreground)"
     echo -e "  ${C_CYAN}start-bg${C_RESET}           Start Void as a background service (24/7 daemon)"
     echo -e "  ${C_CYAN}stop${C_RESET}               Stop running background Void service"
     echo -e "  ${C_CYAN}status${C_RESET}             Check running status, memory RSS, and telemetry"
-    echo -e "  ${C_CYAN}models${C_RESET}             List installed local small-model weights & catalog"
     echo -e "  ${C_CYAN}test${C_RESET}               Run automated test suite (pytest)"
     echo -e "  ${C_CYAN}clean${C_RESET}              Run system and temporary storage cleaner"
     echo -e "  ${C_CYAN}permissions${C_RESET}        Inspect Android permissions status & privacy policy"
@@ -86,6 +88,73 @@ cmd_cli() {
 cmd_fastfetch() {
     cd "$VOID_DIR"
     "$PYTHON_BIN" -c "from core.fastfetch import FastFetchCollector; print(FastFetchCollector().render_ascii())"
+}
+
+cmd_setup_bot() {
+    cd "$VOID_DIR"
+    exec "$PYTHON_BIN" "$VOID_DIR/core/bot_setup.py"
+}
+
+cmd_plugins() {
+    cd "$VOID_DIR"
+    ACTION="${1:-list}"
+    shift || true
+    "$PYTHON_BIN" -c "
+import sys
+from extensions.manager import global_extension_manager
+
+action = '$ACTION'
+args = sys.argv[1:]
+
+if action == 'list':
+    loaded = global_extension_manager.list_extensions()
+    print('=' * 60)
+    print(' 🧩 ACTIVE PLUGINS (' + str(len(loaded)) + ')')
+    print('=' * 60)
+    if not loaded:
+        print('  Zero extensions loaded. System running in hyper-lean mode.')
+        print('  Use \"void plugins search\" to explore community extensions.')
+    for p in loaded:
+        print(f' • {p[\"name\"]} v{p[\"version\"]} - {p[\"description\"]}')
+        print(f'   Tools: {p.get(\"tools\", [])}')
+    print('=' * 60)
+
+elif action in ('search', 'find'):
+    q = ' '.join(args)
+    results = global_extension_manager.search_catalog(q)
+    print('=' * 60)
+    print(' 🔍 COMMUNITY PLUGINS CATALOG (' + str(len(results)) + ' matches)')
+    print('=' * 60)
+    for r in results:
+        stat = '✅ INSTALLED' if r['installed'] else '📥 AVAILABLE'
+        print(f' • {r[\"id\"]:<16} [{stat}] v{r[\"version\"]}')
+        print(f'   {r[\"description\"]}')
+        print(f'   Tools: {r[\"tools\"]}')
+    print('=' * 60)
+    print('To install: void plugin install <plugin_id>')
+
+elif action in ('install', 'add'):
+    if not args:
+        print('Usage: void plugin install <plugin_id>')
+        sys.exit(1)
+    pid = args[0]
+    print(f'Downloading & verifying plugin \"{pid}\"...')
+    res = global_extension_manager.install_plugin(pid)
+    if res.get('success'):
+        print('✅ ' + res['message'])
+    else:
+        print('❌ Install failed: ' + str(res.get('error')))
+
+elif action in ('remove', 'uninstall', 'delete'):
+    if not args:
+        print('Usage: void plugin remove <plugin_id>')
+        sys.exit(1)
+    pid = args[0]
+    res = global_extension_manager.uninstall_plugin(pid)
+    print('✅ ' + res['message'])
+else:
+    print('Unknown plugins action: ' + action + '. Try list, search, install, or remove.')
+" "$@"
 }
 
 cmd_models() {
@@ -113,7 +182,6 @@ print('=' * 60)
 cmd_start() {
     cd "$VOID_DIR"
 
-    # Halt any running background Void instance before foreground launch
     if [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -143,7 +211,6 @@ cmd_start_bg() {
         rm -f "$PID_FILE"
     fi
 
-    # Recycle any lingering unlinked processes
     ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
     if [ -n "$ROGUE_PIDS" ]; then
         echo -e "${C_YELLOW}[INFO]${C_RESET} Stopping stale Void process ($ROGUE_PIDS)..."
@@ -227,7 +294,7 @@ cmd_test() {
 cmd_clean() {
     cd "$VOID_DIR"
     echo -e "${C_CYAN}[INFO]${C_RESET} Executing Void Storage Cleaner..."
-    "$PYTHON_BIN" -c "from extensions.system_cleaner import SystemCleanerStrategy; print(SystemCleanerStrategy().run_safe(dry_run=False).output['summary'])"
+    "$PYTHON_BIN" -c "from tools.system import CleanStorageStrategy; print(CleanStorageStrategy().run_safe(dry_run=False).output['summary'])"
 }
 
 cmd_permissions() {
@@ -254,6 +321,12 @@ case "$SUBCMD" in
         ;;
     fastfetch|fetch)
         cmd_fastfetch "$@"
+        ;;
+    setup-bot|setup|bot-setup)
+        cmd_setup_bot "$@"
+        ;;
+    plugins|plugin)
+        cmd_plugins "$@"
         ;;
     models|model)
         cmd_models "$@"

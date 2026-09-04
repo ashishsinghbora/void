@@ -25,6 +25,7 @@ from daemons.service_runner import global_daemon_supervisor
 from telegram.bot_controller import AuthenticatedTelegramController
 from security.credential_vault import CredentialVault
 from core.fastfetch import global_fastfetch_collector
+from core.bot_setup import load_config_env, TelegramSetupWizard
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,7 @@ def parse_arguments():
     parser.add_argument("--no-daemons", action="store_true", help="Disable background proactive daemons")
     parser.add_argument("--no-wake-lock", action="store_true", help="Disable CPU wake-lock (suppresses Termux wake-lock notification)")
     parser.add_argument("--vault-pass", type=str, default=None, help="Passphrase to unlock encrypted credential vault")
+    parser.add_argument("--setup", action="store_true", help="Launch interactive Telegram bot setup wizard")
     return parser.parse_args()
 
 
@@ -54,8 +56,13 @@ def setup_signal_handlers():
 
 
 def main():
+    load_config_env()
     args = parse_arguments()
     setup_signal_handlers()
+
+    if args.setup:
+        TelegramSetupWizard.run_interactive()
+        return
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     rss_mb = round(usage.ru_maxrss / 1024.0, 2)

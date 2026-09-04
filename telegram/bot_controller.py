@@ -20,6 +20,7 @@ from tools.registry import global_tool_registry
 from storage.repository import ExecutionLogRepository
 from core.fastfetch import global_fastfetch_collector
 from core.model_manager import global_model_manager
+from extensions.manager import global_extension_manager
 
 logger = logging.getLogger("VoidAdvancedCore.Telegram")
 
@@ -52,7 +53,7 @@ class AuthenticatedTelegramController:
         session_timeout_seconds: int = 900,
     ):
         self._token = token
-        self._admin_ids = admin_ids or self._load_admin_ids()
+        self._admin_ids = admin_ids if admin_ids is not None else self._load_admin_ids()
         self._rate_limiter = TokenBucketRateLimiter(rate_per_second=0.5, capacity=rate_limit_capacity)
         self._session_manager = SessionTimeoutManager(timeout_seconds=session_timeout_seconds)
         self._bot = None
@@ -98,11 +99,32 @@ class AuthenticatedTelegramController:
         btn_logs = types.InlineKeyboardButton("📋 Recent Logs", callback_data="cb_logs")
         btn_apps = types.InlineKeyboardButton("🚀 Apps Hub", callback_data="cb_apps")
         btn_models = types.InlineKeyboardButton("🧠 Model Status", callback_data="cb_models")
+        btn_plugins = types.InlineKeyboardButton("🧩 Plugin Store", callback_data="cb_plugins")
+        btn_refresh = types.InlineKeyboardButton("🔄 Refresh", callback_data="cb_back_main")
 
         markup.add(btn_torch, btn_bat)
         markup.add(btn_photo, btn_clean)
         markup.add(btn_fetch, btn_logs)
         markup.add(btn_apps, btn_models)
+        markup.add(btn_plugins, btn_refresh)
+        return markup
+
+    def get_plugins_keyboard(self) -> Any:
+        """Constructs interactive plugin manager submenu."""
+        if not HAS_TELEBOT or types is None:
+            return None
+
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        catalog = global_extension_manager.search_catalog()
+        for item in catalog:
+            pid = item["id"]
+            if item["installed"]:
+                btn = types.InlineKeyboardButton(f"🗑️ Remove: {item['name']}", callback_data=f"plugin_remove:{pid}")
+            else:
+                btn = types.InlineKeyboardButton(f"📥 Install: {item['name']}", callback_data=f"plugin_install:{pid}")
+            markup.add(btn)
+
+        markup.add(types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main"))
         return markup
 
     def get_apps_keyboard(self) -> Any:
@@ -276,6 +298,21 @@ class AuthenticatedTelegramController:
             summary = res.output.get("summary", "Cleaned") if isinstance(res.output, dict) else str(res.output)
             bot.reply_to(message, f"🧹 *Storage Clean Complete:*\n`{summary}`", parse_mode="Markdown")
 
+        @bot.message_handler(commands=["plugins"])
+        def handle_plugins(message):
+            user_id = message.from_user.id
+            if not self._is_authorized(user_id):
+                return
+            catalog = global_extension_manager.search_catalog()
+            installed = global_extension_manager.list_extensions()
+            text = (
+                f"🧩 *Void Dynamic Plugin Store*\n\n"
+                f"• *Active Plugins:* `{len(installed)}` (Zero default bloat)\n"
+                f"• *Catalog Items:* `{len(catalog)}` available\n\n"
+                "Tap an option below to install or remove community plugins securely:"
+            )
+            bot.reply_to(message, text, reply_markup=self.get_plugins_keyboard(), parse_mode="Markdown")
+
         # ----------------------------------------------------------------------
         # Inline Callback Query Handler
         # ----------------------------------------------------------------------
@@ -380,6 +417,44 @@ class AuthenticatedTelegramController:
                     f"🚀 {res.output if res.success else res.error}",
                     parse_mode="Markdown"
                 )
+
+            elif data == "cb_plugins":
+                bot.answer_callback_query(call.id)
+                catalog = global_extension_manager.search_catalog()
+                installed = global_extension_manager.list_extensions()
+                text = (
+                    f"🧩 *Void Dynamic Plugin Store*\n\n"
+                    f"• *Active Plugins:* `{len(installed)}` (Zero default bloat)\n"
+                    f"• *Catalog Items:* `{len(catalog)}` available\n\n"
+                    "Tap an extension below to install or remove on-demand:"
+                )
+                try:
+                    bot.edit_message_text(text, chat_id, message_id, reply_markup=self.get_plugins_keyboard(), parse_mode="Markdown")
+                except Exception:
+                    pass
+
+            elif data.startswith("plugin_install:"):
+                pid = data.split(":", 1)[1]
+                bot.answer_callback_query(call.id, f"Installing {pid}...")
+                res = global_extension_manager.install_plugin(pid)
+                if res.get("success"):
+                    bot.send_message(chat_id, f"✅ *Plugin '{pid}' installed!* Tools: `{res.get('tools')}`", parse_mode="Markdown")
+                else:
+                    bot.send_message(chat_id, f"❌ *Install failed:* {res.get('error')}", parse_mode="Markdown")
+                try:
+                    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=self.get_plugins_keyboard())
+                except Exception:
+                    pass
+
+            elif data.startswith("plugin_remove:"):
+                pid = data.split(":", 1)[1]
+                bot.answer_callback_query(call.id, f"Removing {pid}...")
+                res = global_extension_manager.uninstall_plugin(pid)
+                bot.send_message(chat_id, f"🗑️ *{res.get('message')}*", parse_mode="Markdown")
+                try:
+                    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=self.get_plugins_keyboard())
+                except Exception:
+                    pass
 
         # ----------------------------------------------------------------------
         # Generic Natural Language Query Handler

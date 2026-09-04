@@ -5,8 +5,10 @@ Handles system notifications, toast popups, clipboard management, GPS location,
 network status, app launching, and biometric authentication.
 """
 
+import os
 import json
-from typing import Any, Dict
+import shutil
+from typing import Any, Dict, List
 
 from core.types import ToolExecutionResult
 from core.command_executor import SecureCommandExecutor
@@ -306,3 +308,122 @@ class OpenAppStrategy(ToolStrategy):
         pkg_name = raw if "." in raw else f"com.{raw}"
         SecureCommandExecutor.run(["monkey", "-p", pkg_name, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"])
         return ToolExecutionResult(success=True, output=f"Attempted opening '{app_name}'", error=None, duration_ms=0)
+
+
+class CleanStorageStrategy(ToolStrategy):
+    """Safely cleans temporary cache files, orphaned bytecodes, and stale logs."""
+
+    PROTECTED_PATTERNS = {
+        ".void_agent.db",
+        ".void_vault.enc",
+        "requirements.txt",
+        "README.md",
+        "app.py",
+        "termux_void.py",
+        ".git",
+    }
+
+    def __init__(self):
+        super().__init__(
+            name="clean_system",
+            description="Scan and clean temporary cache files, .pyc bytecodes, and stale logs to reclaim storage. Supports dry_run mode.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "dry_run": {"type": "boolean", "description": "If true, simulates cleanup without deleting files (default: true)"},
+                    "target_scope": {"type": "string", "description": "Cleanup scope: 'pycache', 'cache', 'temp', or 'all' (default: 'all')"},
+                },
+            },
+        )
+
+    def execute(self, dry_run: bool = True, target_scope: str = "all", **kwargs: Any) -> ToolExecutionResult:
+        scope = InputSanitizer.sanitize_string(target_scope, max_length=16).lower() or "all"
+        is_dry_run = bool(dry_run)
+
+        home_dir = os.path.expanduser("~")
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+        scan_roots = [project_dir]
+        cache_dir = os.path.join(home_dir, ".cache")
+        if os.path.isdir(cache_dir):
+            scan_roots.append(cache_dir)
+
+        termux_cache = "/data/data/com.termux/cache"
+        if os.path.isdir(termux_cache):
+            scan_roots.append(termux_cache)
+
+        candidates_to_delete: List[str] = []
+        directories_to_remove: List[str] = []
+        bytes_reclaimed = 0
+
+        for root_dir in scan_roots:
+            if not os.path.exists(root_dir):
+                continue
+
+            for dirpath, dirnames, filenames in os.walk(root_dir, topdown=True):
+                if ".git" in dirnames:
+                    dirnames.remove(".git")
+                if "venv" in dirnames:
+                    dirnames.remove("venv")
+                if ".venv" in dirnames:
+                    dirnames.remove(".venv")
+
+                if scope in ("pycache", "all"):
+                    if os.path.basename(dirpath) == "__pycache__":
+                        directories_to_remove.append(dirpath)
+                        for f in filenames:
+                            fp = os.path.join(dirpath, f)
+                            try:
+                                bytes_reclaimed += os.path.getsize(fp)
+                            except OSError:
+                                pass
+                        continue
+
+                if scope in ("temp", "all"):
+                    for f in filenames:
+                        if f in self.PROTECTED_PATTERNS:
+                            continue
+                        if f.endswith((".tmp", ".bak", ".swp", ".pyc", ".pyo")):
+                            fp = os.path.join(dirpath, f)
+                            candidates_to_delete.append(fp)
+                            try:
+                                bytes_reclaimed += os.path.getsize(fp)
+                            except OSError:
+                                pass
+
+        if not is_dry_run:
+            for fpath in candidates_to_delete:
+                try:
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+                except OSError:
+                    pass
+
+            for dpath in directories_to_remove:
+                try:
+                    if os.path.isdir(dpath):
+                        shutil.rmtree(dpath, ignore_errors=True)
+                except OSError:
+                    pass
+
+        reclaimed_mb = round(bytes_reclaimed / (1024.0 * 1024.0), 3)
+        summary = (
+            f"Storage cleanup completed ({'DRY RUN' if is_dry_run else 'EXECUTED'}): "
+            f"{len(candidates_to_delete)} temporary files, {len(directories_to_remove)} cache dirs identified. "
+            f"Reclaimed: {reclaimed_mb} MB ({bytes_reclaimed} bytes)."
+        )
+
+        return ToolExecutionResult(
+            success=True,
+            output={
+                "dry_run": is_dry_run,
+                "scope": scope,
+                "files_count": len(candidates_to_delete),
+                "dirs_count": len(directories_to_remove),
+                "bytes_reclaimed": bytes_reclaimed,
+                "reclaimed_mb": reclaimed_mb,
+                "summary": summary,
+            },
+            error=None,
+            duration_ms=0,
+        )

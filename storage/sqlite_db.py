@@ -35,19 +35,20 @@ class SQLiteDatabase:
     def get_connection(self) -> sqlite3.Connection:
         """Retrieves or establishes a thread-local SQLite connection with WAL mode."""
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            conn = sqlite3.connect(
-                self._db_path,
-                timeout=10.0,
-                check_same_thread=False,
-            )
-            # Enable WAL mode for high-concurrency read-write performance
-            conn.execute("PRAGMA journal_mode = WAL;")
-            conn.execute("PRAGMA synchronous = NORMAL;")
-            conn.execute("PRAGMA busy_timeout = 5000;")
-            conn.execute("PRAGMA temp_store = MEMORY;")
-            conn.execute("PRAGMA foreign_keys = ON;")
-            conn.row_factory = sqlite3.Row
-            self._local.conn = conn
+            with self._lock:
+                conn = sqlite3.connect(
+                    self._db_path,
+                    timeout=15.0,
+                    check_same_thread=False,
+                )
+                # Enable WAL mode for high-concurrency read-write performance
+                conn.execute("PRAGMA journal_mode = WAL;")
+                conn.execute("PRAGMA synchronous = NORMAL;")
+                conn.execute("PRAGMA busy_timeout = 10000;")
+                conn.execute("PRAGMA temp_store = MEMORY;")
+                conn.execute("PRAGMA foreign_keys = ON;")
+                conn.row_factory = sqlite3.Row
+                self._local.conn = conn
         return self._local.conn
 
     def _init_schema(self) -> None:
@@ -129,7 +130,7 @@ class SQLiteDatabase:
         with conn:
             cur = conn.cursor()
             cur.execute(sql, params)
-            return cur.rowcount
+            return cur.lastrowid if cur.lastrowid else cur.rowcount
 
     def close(self) -> None:
         """Closes thread connection."""

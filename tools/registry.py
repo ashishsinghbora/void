@@ -45,6 +45,7 @@ from tools.system import (
     DownloadFileStrategy,
     AuthenticateFingerprintStrategy,
     OpenAppStrategy,
+    CleanStorageStrategy,
 )
 from tools.social_apps import (
     SendWhatsAppMessageStrategy,
@@ -105,6 +106,7 @@ class ToolRegistry:
             OpenTelegramChatStrategy(),
             OpenSocialProfileStrategy(),
             LaunchInstalledAppStrategy(),
+            CleanStorageStrategy(),
         ]
         for s in strategies:
             self.register(s)

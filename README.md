@@ -11,7 +11,7 @@
 
 **Void** is an enterprise-grade, high-performance, ultra-low-memory local agentic platform engineered specifically for Android/Termux and mobile edge hardware. It bridges autonomous ReAct reasoning loops directly with low-level Android operating system capabilities, hardware sensors, proactive automation daemons, and a glassmorphic cyber-styled dashboard.
 
-[One-Line Install](#-one-line-zero-friction-installer) • [Quick Start](#-quick-start--cli-launcher) • [Architecture](#-system-architecture) • [Plugins](#-modular-extension-architecture-plugin-system) • [Web Dashboard](#-glassmorphic-web-dashboard--github-pages) • [Android Hardening](#-android--termux-troubleshooting--permissions)
+[One-Line Install](#-one-line-zero-friction-installer) • [Manual Setup](#-manual-step-by-step-installation) • [CLI Commands](#-quick-start--cli-launcher) • [Directives](#-supported-hardware--agent-directives) • [Plugins](#-modular-extension-architecture-plugin-system) • [Web Dashboard](#-glassmorphic-web-dashboard--github-pages) • [Troubleshooting](#-android--termux-troubleshooting--permissions)
 
 </div>
 
@@ -25,13 +25,53 @@ Get Void running on a fresh Android/Termux environment or desktop development wo
 curl -sSL https://raw.githubusercontent.com/ashishsinghbora/void/main/install.sh | bash
 ```
 
+> [!TIP]
+> To perform a clean reinstall or upgrade to the latest version on Termux:
+> ```bash
+> rm -rf ~/void && curl -sSL https://raw.githubusercontent.com/ashishsinghbora/void/main/install.sh | bash
+> ```
+
 ### What the installer automates:
 1. **Host Detection:** Automatically identifies whether you are in native Android Termux or desktop development mode (Linux/macOS).
-2. **Package Resolution:** Runs `pkg update` and provisions `termux-api`, `python`, `git`, `clang`, `libffi`, `openssl`, `jq`, and `curl`.
+2. **Pre-Compiled Native Packages:** Installs `termux-api`, `python`, `python-cryptography` (native binary avoiding Rust compilation), `git`, `clang`, `libffi`, `openssl`, `jq`, and `curl`.
 3. **Android Storage & Wake-Lock:** Triggers `termux-setup-storage` for `~/storage` file links and acquires a CPU wake-lock (`termux-wake-lock`) to maintain 24/7 background execution.
-4. **Environment Isolation:** Provisions a dedicated virtual environment with all pinned dependencies.
+4. **Environment Isolation (`--system-site-packages`):** Provisions a dedicated virtual environment that inherits native system packages without requiring pip C/Rust builds.
 5. **Global CLI Launcher:** Links the unified `void` command to `$PREFIX/bin/void` (or `~/.local/bin/void`).
 6. **API Diagnostic Check:** Probes hardware endpoints to verify companion Termux:API permissions.
+
+---
+
+## 📦 Manual Step-by-Step Installation
+
+If you prefer to install packages manually or inspect every command:
+
+```bash
+# 1. Update Termux and install system prerequisites
+pkg update -y
+pkg install -y termux-api python python-cryptography git clang libffi openssl jq curl
+
+# 2. Setup storage access and background wake-lock
+termux-setup-storage
+termux-wake-lock
+
+# 3. Clone the repository
+git clone https://github.com/ashishsinghbora/void.git ~/void
+cd ~/void
+
+# 4. Create virtual environment with system site-packages
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+
+# 5. Install pure-Python dependencies
+pip install --no-cache-dir -r requirements.txt
+
+# 6. Enable global launcher
+chmod +x bin/void
+ln -sf ~/void/bin/void $PREFIX/bin/void
+
+# 7. Start Void
+void
+```
 
 ---
 
@@ -42,14 +82,25 @@ Once installed, the global `void` command gives you instant control:
 ```bash
 # 1. Interactive ReAct Terminal Assistant (default)
 void
+# or explicitly:
+void cli
 
 # 2. Start Full Production Stack (Waitress WSGI + Daemons + Web UI)
 void start
 
-# 3. Start Void as a 24/7 Background Service
+# Start with custom network options:
+void start --host 0.0.0.0 --port 8080 --threads 4
+
+# Start with authenticated Telegram remote bot:
+void start --telegram <BOT_TOKEN> --admin-id <TELEGRAM_USER_ID>
+
+# Start without background proactive daemons:
+void start --no-daemons
+
+# 3. Start Void as a 24/7 Background Service (detached nohup)
 void start-bg
 
-# 4. View Active Service Status, Memory RSS & Battery Telemetry
+# 4. View Active Service Status, Process PID, Memory RSS & Battery Telemetry
 void status
 
 # 5. Stop Running Background Service Cleanly
@@ -63,7 +114,42 @@ void test
 
 # 8. Pull Updates from GitHub and Sync Dependencies
 void update
+
+# 9. View CLI Help & Options
+void help
 ```
+
+---
+
+## 🗣️ Supported Hardware & Agent Directives
+
+Void interprets natural language and speech commands dynamically via its deterministic ReAct routing engine and local LLM runtime:
+
+| Category | Supported Directives & Example Queries | Triggered Tool |
+| :--- | :--- | :--- |
+| **Battery Telemetry** | *"What is my battery level?"*, *"Battery health"*, *"Is phone charging?"* | `get_battery_status` |
+| **Torch / Flashlight** | *"Turn on the flashlight"*, *"Switch off the torch"* | `set_torch` |
+| **Haptic Vibration** | *"Vibrate the phone"*, *"Vibrate for 2 seconds"* | `vibrate_device` |
+| **Speech (TTS)** | *"Speak out loud: task completed"*, *"Say hello to the user"* | `text_to_speech` |
+| **Camera Photo** | *"Take a photo using camera"*, *"Take a selfie photo"* | `take_camera_photo` |
+| **SMS Messaging** | *"Send SMS to +123456789 saying Meeting at 5pm"* | `send_sms` |
+| **Voice Dialing** | *"Call +123456789"*, *"Dial voice call to 911"* | `make_phone_call` |
+| **SMS Reader** | *"Show my recent text messages"*, *"List latest SMS"* | `get_sms_messages` |
+| **Contacts** | *"List phone contacts"*, *"Search contacts for Alice"* | `get_contacts` |
+| **Call Log** | *"Check recent call history"*, *"Who called me today?"* | `get_call_log` |
+| **Clipboard** | *"What is on my clipboard?"*, *"Copy secret token to clipboard"* | `get_clipboard` / `set_clipboard` |
+| **GPS Location** | *"Where am I right now?"*, *"Get current GPS location coordinates"* | `get_location` |
+| **Wi-Fi Diagnostics** | *"What Wi-Fi network is connected?"*, *"Scan nearby Wi-Fi networks"* | `get_wifi_info` / `scan_wifi_networks` |
+| **App Launcher** | *"Open WhatsApp"*, *"Launch YouTube"*, *"Open Chrome"*, *"Open Settings"* | `open_app` |
+| **Audio & Volume** | *"Set media volume to 10"*, *"Get audio volume status"* | `set_volume` / `get_volume_info` |
+| **Display Brightness**| *"Set brightness to 200"*, *"Set screen brightness auto"* | `set_screen_brightness` |
+| **Audio Recorder** | *"Start recording microphone audio"*, *"Stop audio recording"* | `record_audio_start` / `record_audio_stop` |
+| **System Share** | *"Share this text via Android share sheet"* | `share_content` |
+| **Notifications** | *"Show notification with title Alert and message Complete"* | `show_notification` |
+| **Screen Toast** | *"Show a toast saying Hello Void"* | `show_toast` |
+| **Crypto Tracker** | *"Check bitcoin price"*, *"What is ethereum trading at?"*, *"Speak solana price"* | `track_crypto` *(Plugin)* |
+| **GitHub Monitor** | *"Check github repo ashishsinghbora/void"*, *"Show issues on void repo"* | `monitor_github` *(Plugin)* |
+| **Storage Cleaner** | *"Clean temporary cache files"*, *"Free up device storage space"* | `clean_system` *(Plugin)* |
 
 ---
 
@@ -128,7 +214,7 @@ flowchart TB
 ### 3. Cyber Hardened Privilege Sandboxing
 - **Zero-Trust Whitelist Sanitizers:** Strict regex validation on phone numbers (E.164), paths (jail enforcement within `/sdcard` and `~`), URLs, and strings. Terminal ANSI escape sequences and null-byte injection attacks are stripped automatically.
 - **Vector-Only Subprocess Execution:** Subprocesses are strictly invoked using array argument vectors (`list[str]`), completely banning `shell=True` to render shell metacharacter and command injection attacks impossible.
-- **Authenticated AES-256-GCM Vault:** Stores Telegram tokens and API keys using PBKDF2-HMAC-SHA256 key derivation with 100,000 iterations, random salt, and nonces.
+- **Authenticated AES-256-GCM Vault:** Stores Telegram tokens and API keys using PBKDF2-HMAC-SHA256 key derivation with 100,000 iterations, random salt, and nonces. Includes a zero-dependency pure standard library fallback.
 
 ### 4. Zero-Bloat Persistence Layer
 - **SQLite Write-Ahead Logging (WAL):** High-concurrency database engine with `PRAGMA synchronous = NORMAL` and thread-local connections.
@@ -204,13 +290,25 @@ https://ashishsinghbora.github.io/void/
 
 ## 📱 Android & Termux Troubleshooting & Permissions
 
-To allow Void to interface with mobile sensors and hardware, ensure the following Android requirements are configured:
+### 1. Rust / Cryptography Build Errors on Termux
+If you encounter `Failed to build cryptography` or `Target triple not supported by rustup`:
+> [!NOTE]
+> PyPI does not provide pre-compiled wheels for Android Bionic libc. **Do not compile cryptography via pip.**
+> Install Termux's official pre-compiled package instead:
+> ```bash
+> pkg install -y python-cryptography
+> ```
+> And always create your virtual environment with `--system-site-packages`:
+> ```bash
+> python3 -m venv --system-site-packages .venv
+> ```
+> The `install.sh` script does this automatically.
 
-### 1. Install Termux:API Companion App
+### 2. Install Termux:API Companion App
 > [!IMPORTANT]
 > Do **NOT** install Termux or Termux:API from the Google Play Store (they are deprecated due to Android SDK restrictions). Always install both from **[F-Droid](https://f-droid.org/packages/com.termux.api/)**.
 
-### 2. Grant Android System Permissions
+### 3. Grant Android System Permissions
 Navigate to your device's **Android Settings** $\to$ **Apps** $\to$ **Termux:API** $\to$ **Permissions** and enable:
 - 📷 **Camera** (Required for `take_camera_photo`)
 - 📍 **Location** (Required for GPS telemetry `get_location`)
@@ -218,14 +316,14 @@ Navigate to your device's **Android Settings** $\to$ **Apps** $\to$ **Termux:API
 - 📇 **Contacts** (Required for `get_contacts`)
 - 💾 **Storage** (Required for saving captured media and downloads)
 
-### 3. Disable Battery Optimization (24/7 Background Uptime)
+### 4. Disable Battery Optimization (24/7 Background Uptime)
 1. In Android Settings $\to$ **Apps** $\to$ **Termux** $\to$ **Battery**, select **"Unrestricted"** (Disable battery optimization).
 2. Acquire CPU wake-lock inside Termux:
    ```bash
    termux-wake-lock
    ```
 
-### 4. Storage Setup
+### 5. Storage Setup
 Execute the following to map Android shared storage to Termux:
 ```bash
 termux-setup-storage

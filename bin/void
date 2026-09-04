@@ -47,7 +47,7 @@ show_banner() {
     echo "  ╚██╗ ██╔╝██║   ██║██║██║  ██║"
     echo "   ╚████╔╝ ╚██████╔╝██║██████╔╝"
     echo "    ╚═══╝   ╚═════╝ ╚═╝╚═════╝ "
-    echo -e "  Enterprise Edge Agentic Platform (Android / Termux)${C_RESET}"
+    echo -e "  Autonomous Edge Agent Platform (Terminal & Telegram Native)${C_RESET}"
     echo ""
 }
 
@@ -57,24 +57,24 @@ show_help() {
     echo ""
     echo -e "${C_BOLD}Commands:${C_RESET}"
     echo -e "  ${C_CYAN}cli${C_RESET}                Launch interactive ReAct terminal session (default)"
-    echo -e "  ${C_CYAN}start${C_RESET}              Start production Waitress server + daemons (foreground)"
-    echo -e "  ${C_CYAN}start-bg${C_RESET}           Start Void server as a background service"
+    echo -e "  ${C_CYAN}fastfetch${C_RESET}          Display visual ASCII/Unicode system & edge telemetry"
+    echo -e "  ${C_CYAN}start${C_RESET}              Start background daemons & Telegram bot (foreground)"
+    echo -e "  ${C_CYAN}start-bg${C_RESET}           Start Void as a background service (24/7 daemon)"
     echo -e "  ${C_CYAN}stop${C_RESET}               Stop running background Void service"
-    echo -e "  ${C_CYAN}status${C_RESET}             Check running status, memory, and telemetry"
+    echo -e "  ${C_CYAN}status${C_RESET}             Check running status, memory RSS, and telemetry"
+    echo -e "  ${C_CYAN}models${C_RESET}             List installed local small-model weights & catalog"
     echo -e "  ${C_CYAN}test${C_RESET}               Run automated test suite (pytest)"
-    echo -e "  ${C_CYAN}clean${C_RESET}              Run system and temporary file cleaner"
-    echo -e "  ${C_CYAN}permissions${C_RESET}        Inspect Android permissions status, rationale & privacy"
+    echo -e "  ${C_CYAN}clean${C_RESET}              Run system and temporary storage cleaner"
+    echo -e "  ${C_CYAN}permissions${C_RESET}        Inspect Android permissions status & privacy policy"
     echo -e "  ${C_CYAN}update${C_RESET}             Pull latest updates and sync dependencies"
     echo -e "  ${C_CYAN}help${C_RESET}               Show this help message"
     echo ""
     echo -e "${C_BOLD}Options (for start / start-bg):${C_RESET}"
-    echo -e "  ${C_CYAN}--no-wake-lock${C_RESET}     Disable CPU wake-lock (suppresses Termux wake-lock notification)"
+    echo -e "  ${C_CYAN}--telegram <token>${C_RESET} Telegram bot API token"
+    echo -e "  ${C_CYAN}--admin-id <id>${C_RESET}    Whitelisted Admin Telegram User ID"
+    echo -e "  ${C_CYAN}--no-wake-lock${C_RESET}     Disable CPU wake-lock (suppresses notification sound)"
     echo -e "  ${C_CYAN}--no-daemons${C_RESET}       Disable background proactive daemons"
-    echo -e "  ${C_CYAN}--port <port>${C_RESET}      Specify custom port (default: 5000)"
     echo -e "  ${C_CYAN}--vault-pass <key>${C_RESET} Passphrase for encrypted credential vault"
-    echo ""
-    echo -e "${C_BOLD}Web Dashboard:${C_RESET} http://localhost:5000"
-    echo -e "${C_BOLD}GitHub Pages UI:${C_RESET} https://ashishsinghbora.github.io/void/"
     echo ""
 }
 
@@ -83,10 +83,37 @@ cmd_cli() {
     exec "$PYTHON_BIN" "$VOID_DIR/termux_void.py" "$@"
 }
 
+cmd_fastfetch() {
+    cd "$VOID_DIR"
+    "$PYTHON_BIN" -c "from core.fastfetch import FastFetchCollector; print(FastFetchCollector().render_ascii())"
+}
+
+cmd_models() {
+    cd "$VOID_DIR"
+    "$PYTHON_BIN" -c "
+from core.model_manager import global_model_manager
+installed = global_model_manager.list_installed_models()
+available = global_model_manager.list_available_models()
+active = global_model_manager.get_active_model_name()
+print('=' * 60)
+print(' 🧠 VOID LOCAL EDGE MODELS')
+print('=' * 60)
+print(f' Active Engine: {active or \"Deterministic ReAct (Zero-Weight Heuristic)\"}')
+print(f' Models Dir:    {global_model_manager.models_dir}')
+print('-' * 60)
+print('Catalog:')
+for mid, m in available.items():
+    status = '✅ INSTALLED' if m['installed'] else '📥 AVAILABLE'
+    print(f' • {mid:<14} {m[\"name\"]} ({m[\"size_mb\"]}MB) [{status}]')
+    print(f'   {m[\"description\"]}')
+print('=' * 60)
+"
+}
+
 cmd_start() {
     cd "$VOID_DIR"
 
-    # 1. Halt any running background Void instance before foreground launch
+    # Halt any running background Void instance before foreground launch
     if [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -98,17 +125,7 @@ cmd_start() {
         rm -f "$PID_FILE"
     fi
 
-    # 2. Recycle any lingering app.py processes to free port 5000
-    ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
-    if [ -n "$ROGUE_PIDS" ]; then
-        echo -e "${C_YELLOW}[INFO]${C_RESET} Reclaiming port 5000: stopping stale Void process (PID: $ROGUE_PIDS)..."
-        kill -15 $ROGUE_PIDS 2>/dev/null || true
-        sleep 1
-        kill -9 $ROGUE_PIDS 2>/dev/null || true
-        sleep 0.5
-    fi
-
-    echo -e "${C_GREEN}[INFO]${C_RESET} Starting Void Enterprise Stack on http://0.0.0.0:5000..."
+    echo -e "${C_GREEN}[INFO]${C_RESET} Starting Void Autonomous Edge Stack..."
     exec "$PYTHON_BIN" "$VOID_DIR/app.py" "$@"
 }
 
@@ -118,7 +135,7 @@ cmd_start_bg() {
         OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
             echo -e "${C_YELLOW}[INFO]${C_RESET} Void background service is already active with PID $OLD_PID."
-            echo -e "  • Web Dashboard: ${C_CYAN}http://localhost:5000${C_RESET}"
+            echo -e "  • FastFetch:     ${C_CYAN}void fastfetch${C_RESET}"
             echo -e "  • Log stream:    ${C_CYAN}tail -f $HOME/.void.log${C_RESET}"
             echo -e "  • To restart:    ${C_CYAN}void stop && void start-bg${C_RESET}"
             exit 0
@@ -129,7 +146,7 @@ cmd_start_bg() {
     # Recycle any lingering unlinked processes
     ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
     if [ -n "$ROGUE_PIDS" ]; then
-        echo -e "${C_YELLOW}[INFO]${C_RESET} Reclaiming port 5000 from stale process ($ROGUE_PIDS)..."
+        echo -e "${C_YELLOW}[INFO]${C_RESET} Stopping stale Void process ($ROGUE_PIDS)..."
         kill -15 $ROGUE_PIDS 2>/dev/null || true
         sleep 1
         kill -9 $ROGUE_PIDS 2>/dev/null || true
@@ -140,11 +157,11 @@ cmd_start_bg() {
     nohup "$PYTHON_BIN" "$VOID_DIR/app.py" "$@" > "$HOME/.void.log" 2>&1 &
     NEW_PID=$!
     echo "$NEW_PID" > "$PID_FILE"
-    sleep 2
+    sleep 1
 
     if kill -0 "$NEW_PID" 2>/dev/null; then
         echo -e "${C_GREEN}[SUCCESS]${C_RESET} Void started successfully (PID: $NEW_PID)."
-        echo -e "  • Web Dashboard: ${C_CYAN}http://localhost:5000${C_RESET}"
+        echo -e "  • FastFetch:     ${C_CYAN}void fastfetch${C_RESET}"
         echo -e "  • Log File:      ${C_CYAN}$HOME/.void.log${C_RESET}"
     else
         echo -e "${C_RED}[ERROR]${C_RESET} Void failed to start. Inspect $HOME/.void.log for details."
@@ -165,7 +182,6 @@ cmd_stop() {
         rm -f "$PID_FILE"
     fi
 
-    # Check for any rogue instances
     ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
     if [ -n "$ROGUE_PIDS" ]; then
         echo -e "${C_YELLOW}[INFO]${C_RESET} Halting active Void processes: $ROGUE_PIDS"
@@ -184,12 +200,11 @@ cmd_status() {
         if kill -0 "$PID" 2>/dev/null; then
             RUNNING=1
             echo -e "● Status:        ${C_GREEN}ACTIVE (Running, PID: $PID)${C_RESET}"
-            # Extract memory RSS
             if command -v ps >/dev/null 2>&1; then
                 RSS_KB=$(ps -p "$PID" -o rss= 2>/dev/null | tr -d ' ' || echo "0")
                 if [ -n "$RSS_KB" ] && [ "$RSS_KB" -gt 0 ] 2>/dev/null; then
                     RSS_MB=$(awk "BEGIN {printf \"%.2f\", $RSS_KB/1024}")
-                    echo -e "● Memory RSS:    ${C_CYAN}${RSS_MB} MB${C_RESET} (Target: < 50MB)"
+                    echo -e "● Memory RSS:    ${C_CYAN}${RSS_MB} MB${C_RESET} (Target: < 30MB)"
                 fi
             fi
         fi
@@ -199,35 +214,8 @@ cmd_status() {
         echo -e "● Status:        ${C_RED}INACTIVE (Stopped)${C_RESET}"
     fi
 
-    echo -e "● Dashboard:     ${C_CYAN}http://localhost:5000${C_RESET}"
-    echo -e "● Cloud UI:      ${C_CYAN}https://ashishsinghbora.github.io/void/${C_RESET}"
-
-    # Termux API check (bounded by 2s timeout to prevent terminal hang)
-    if command -v termux-battery-status >/dev/null 2>&1; then
-        echo ""
-        echo -e "${C_BOLD}Hardware Telemetry:${C_RESET}"
-        BATT=""
-        if command -v timeout >/dev/null 2>&1; then
-            BATT=$(timeout 2s termux-battery-status 2>/dev/null || true)
-        elif [ -n "$PYTHON_BIN" ] && [ -x "$PYTHON_BIN" ]; then
-            BATT=$("$PYTHON_BIN" -c "
-import subprocess
-try:
-    res = subprocess.run(['termux-battery-status'], capture_output=True, text=True, timeout=2)
-    print(res.stdout)
-except Exception:
-    pass
-" 2>/dev/null || true)
-        fi
-
-        if [ -n "$BATT" ] && [[ "$BATT" == *"percentage"* ]]; then
-            PCT=$(echo "$BATT" | jq -r '.percentage' 2>/dev/null || echo "N/A")
-            STAT=$(echo "$BATT" | jq -r '.status' 2>/dev/null || echo "N/A")
-            echo -e "  • Battery:     ${PCT}% (${STAT})"
-        else
-            echo -e "  • Battery:     ${C_YELLOW}Standby (Open Termux:API app to activate bridge)${C_RESET}"
-        fi
-    fi
+    echo ""
+    cmd_fastfetch
 }
 
 cmd_test() {
@@ -264,6 +252,12 @@ case "$SUBCMD" in
     cli)
         cmd_cli "$@"
         ;;
+    fastfetch|fetch)
+        cmd_fastfetch "$@"
+        ;;
+    models|model)
+        cmd_models "$@"
+        ;;
     start)
         cmd_start "$@"
         ;;
@@ -297,4 +291,3 @@ case "$SUBCMD" in
         exit 1
         ;;
 esac
-

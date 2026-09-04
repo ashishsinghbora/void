@@ -65,14 +65,24 @@ class AutonomousReActAgent:
 
     def _init_llm_model(self) -> None:
         """Initializes the local LLM runtime with bound tools."""
+        from core.model_manager import global_model_manager
+        model_path = global_model_manager.get_active_model_path()
+        model_name = global_model_manager.get_active_model_name()
+
         if not HAS_NEEDLE or needle is None:
-            logger.warning("Local LLM package not available in environment. Running in heuristic ReAct mode.")
+            if model_path:
+                logger.info(f"Detected local model binary at '{model_path}' ({model_name}). Local LLM engine in heuristic bridge mode.")
+            else:
+                logger.info("Local LLM model offline. Running in deterministic heuristic ReAct mode.")
             return
 
         try:
             callables = self._registry.create_needle_callables()
-            logger.info(f"Binding {len(callables)} tool strategies to Void LLM...")
-            self._llm_agent = needle.Needle(tools=callables)
+            logger.info(f"Binding {len(callables)} tool strategies to Void LLM ({model_name or 'default'})...")
+            if model_path and hasattr(needle, "Needle"):
+                self._llm_agent = needle.Needle(tools=callables, model_path=model_path)
+            else:
+                self._llm_agent = needle.Needle(tools=callables)
             logger.info("Void LLM model loaded and bound successfully.")
         except Exception as e:
             logger.error(f"Failed to bind local LLM runtime: {e}")
@@ -306,6 +316,36 @@ class AutonomousReActAgent:
         elif any(k in q for k in ("clean", "cleanup", "cache", "free space", "temp files", "storage")):
             tool_name = "clean_system"
             args = {"dry_run": "force" not in q and "delete" not in q}
+        elif "whatsapp" in q:
+            tool_name = "send_whatsapp_message"
+            # Extract phone digits and message
+            import re
+            phone_match = re.search(r"(\+?\d{7,15})", query)
+            phone = phone_match.group(1) if phone_match else "1234567890"
+            # Extract text after 'saying' or 'message' or 'text'
+            msg_match = re.search(r"(?:saying|message|text|that)\s+(.+)$", query, re.IGNORECASE)
+            msg = msg_match.group(1) if msg_match else "Hello from Void"
+            args = {"phone": phone, "message": msg}
+        elif "telegram" in q and not q.startswith("/"):
+            tool_name = "open_telegram_chat"
+            import re
+            user_match = re.search(r"(?:chat\s+with|to|user|channel)?\s*@?([A-Za-z0-9_]{3,32})", query)
+            args = {"username": user_match.group(1) if user_match else "durov"}
+        elif any(k in q for k in ("instagram", "insta")):
+            tool_name = "open_social_profile"
+            import re
+            user_match = re.search(r"(?:profile|user|for)?\s*@?([A-Za-z0-9_.]+)", query)
+            args = {"platform": "instagram", "handle": user_match.group(1) if user_match else "instagram"}
+        elif "linkedin" in q:
+            tool_name = "open_social_profile"
+            import re
+            user_match = re.search(r"(?:profile|user|for)?\s*@?([A-Za-z0-9_-]+)", query)
+            args = {"platform": "linkedin", "handle": user_match.group(1) if user_match else "in"}
+        elif any(k in q for k in ("launch", "start app", "open app")):
+            tool_name = "launch_installed_app"
+            import re
+            app_match = re.search(r"(?:launch|start|open)\s+(?:app\s+)?([A-Za-z0-9_]+)", query, re.IGNORECASE)
+            args = {"app_name": app_match.group(1) if app_match else "settings"}
         else:
             tool_name = "get_battery_status"
 

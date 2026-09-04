@@ -16,7 +16,6 @@ from tools.base import ToolStrategy
 from tools.registry import ToolRegistry, global_tool_registry
 from core.types import ToolExecutionResult
 from agents.react_agent import AutonomousReActAgent
-from api.web_server import create_app
 
 
 def test_extension_manager_lifecycle():
@@ -142,20 +141,14 @@ def test_react_agent_extension_heuristics():
 
 
 
-def test_api_extensions_route():
-    """Verifies that the /api/extensions endpoint returns active extensions."""
-    app = create_app()
-    client = app.test_client()
-
-    # Ensure extensions are discovered
+def test_extension_discovery_and_metadata():
+    """Verifies that extension manager discovers and registers default extensions."""
     from extensions.manager import global_extension_manager
-    global_extension_manager.discover_and_load_all()
+    count = global_extension_manager.discover_and_load_all()
+    assert count >= 3
 
-    resp = client.get("/api/extensions")
-    assert resp.status_code == 200
-    data = json.loads(resp.data)
-    assert isinstance(data, list)
-    plugin_names = [item["name"] for item in data]
+    meta_list = global_extension_manager.list_extensions()
+    plugin_names = [item["name"] for item in meta_list]
     assert "crypto_tracker" in plugin_names
     assert "github_monitor" in plugin_names
     assert "system_cleaner" in plugin_names

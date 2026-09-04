@@ -1,16 +1,18 @@
 """
-app.py - Production Entrypoint: Web UI, Remote Telegram Control, and Proactive Daemons.
+app.py - Production Entrypoint: Autonomous Background Daemon & Telegram Control Hub.
 
-Enterprise-grade, high-performance, ultra-low-memory local agentic platform for Android/Termux.
-Powered by Void ReAct Engine, Waitress production WSGI server, and ReAct state machine.
+Enterprise-grade, ultra-lightweight (< 30MB RAM), terminal-and-Telegram-native
+autonomous edge agent platform for Android/Termux. Zero web server bloat.
 """
 
 import os
 import sys
+import time
 import signal
 import logging
 import argparse
 import threading
+import resource
 
 # Prepend Termux binaries path dynamically
 PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
@@ -19,10 +21,10 @@ if os.path.exists(TERMUX_BIN_PATH) and TERMUX_BIN_PATH not in os.environ.get("PA
     os.environ["PATH"] = f"{TERMUX_BIN_PATH}{os.pathsep}{os.environ.get('PATH', '')}"
 
 from core.command_executor import IS_TERMUX
-from api.web_server import run_web_server, create_app
 from daemons.service_runner import global_daemon_supervisor
 from telegram.bot_controller import AuthenticatedTelegramController
 from security.credential_vault import CredentialVault
+from core.fastfetch import global_fastfetch_collector
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,14 +34,11 @@ logger = logging.getLogger("VoidMain")
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Void ReAct Edge Platform for Android/Termux")
-    parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=5000, help="Port to listen on (default: 5000)")
-    parser.add_argument("--threads", type=int, default=4, help="Waitress WSGI worker threads (default: 4)")
+    parser = argparse.ArgumentParser(description="Void Autonomous Edge Platform (Terminal & Telegram Native)")
     parser.add_argument("--telegram", type=str, default=None, help="Telegram bot token")
     parser.add_argument("--admin-id", type=str, default=None, help="Whitelisted Admin Telegram User ID")
     parser.add_argument("--no-daemons", action="store_true", help="Disable background proactive daemons")
-    parser.add_argument("--no-wake-lock", action="store_true", help="Disable CPU wake-lock (suppresses Termux wake lock notification)")
+    parser.add_argument("--no-wake-lock", action="store_true", help="Disable CPU wake-lock (suppresses Termux wake-lock notification)")
     parser.add_argument("--vault-pass", type=str, default=None, help="Passphrase to unlock encrypted credential vault")
     return parser.parse_args()
 
@@ -58,11 +57,16 @@ def main():
     args = parse_arguments()
     setup_signal_handlers()
 
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    rss_mb = round(usage.ru_maxrss / 1024.0, 2)
+
     print("=" * 65)
-    print(" ⚡ VOID ADVANCED EDGE PLATFORM (Android/Termux Hardened)")
+    print(" ⚡ VOID AUTONOMOUS EDGE PLATFORM (Android / Termux Native)")
     print("=" * 65)
-    print(f" Environment: {'Native Android (Termux)' if IS_TERMUX else 'Desktop Development Simulator'}")
-    print(f" Web Dashboard: http://{args.host}:{args.port}")
+    print(f" Environment: {'Native Android (Termux)' if IS_TERMUX else 'Desktop Simulator'}")
+    print(f" Memory RSS:  {rss_mb} MB (Target < 30MB)")
+    print(f" Control:     Terminal CLI & Telegram Bot Interface")
+    print("=" * 65)
 
     # 1. Resolve Credentials (CLI Arg -> Encrypted Vault -> Environment Variable)
     telegram_token = args.telegram
@@ -95,23 +99,23 @@ def main():
     else:
         logger.info("Proactive daemons disabled via --no-daemons flag.")
 
-    # 3. Launch Authenticated Telegram Bot (if token provided)
-    if telegram_token:
-        logger.info("Starting authenticated Telegram bot controller in background thread...")
-        admin_set = {int(admin_id)} if admin_id and str(admin_id).isdigit() else None
-        tg_controller = AuthenticatedTelegramController(token=telegram_token, admin_ids=admin_set)
-        tg_thread = threading.Thread(target=tg_controller.start_polling, name="TelegramBotThread", daemon=True)
-        tg_thread.start()
-    else:
-        logger.info("Telegram remote control disabled (no token provided).")
-
-    # 4. Launch Production Waitress WSGI Web Server with clean lifecycle management
+    # 3. Launch Authenticated Telegram Bot or Standby Loop
     try:
-        run_web_server(host=args.host, port=args.port, threads=args.threads)
+        if telegram_token:
+            logger.info("Starting authenticated Telegram bot controller listener...")
+            admin_set = {int(admin_id)} if admin_id and str(admin_id).isdigit() else None
+            tg_controller = AuthenticatedTelegramController(token=telegram_token, admin_ids=admin_set)
+            tg_controller.start_polling()
+        else:
+            logger.info("Telegram remote control offline (no token configured).")
+            logger.info("Void proactive background daemons are active. Press Ctrl+C to stop.")
+            logger.info("To enable Telegram control: export TELEGRAM_TOKEN='your_token' or void start --telegram <token>")
+            while True:
+                time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Received KeyboardInterrupt. Shutting down Void platform...")
     except Exception as e:
-        logger.error(f"Unexpected web server exception: {e}")
+        logger.error(f"Unexpected service exception: {e}")
     finally:
         logger.info("Executing clean daemon and wake-lock teardown...")
         global_daemon_supervisor.stop_all()

@@ -81,6 +81,15 @@ class SystemDaemonSupervisor:
         self.release_wake_lock()
         logger.info("All daemons stopped.")
 
+    def get_status(self) -> dict:
+        """Returns health status dictionary of background daemons and wake-lock."""
+        return {
+            "notification_interceptor": getattr(self._notif_daemon, "_running", False),
+            "routine_scheduler": getattr(self._routine_scheduler, "_running", False),
+            "wake_lock_acquired": self._wake_lock_acquired,
+            "wake_lock_enabled": self._enable_wake_lock,
+        }
+
 
 # Global daemon supervisor instance
 global_daemon_supervisor = SystemDaemonSupervisor()

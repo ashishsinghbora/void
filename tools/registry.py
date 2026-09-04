@@ -46,6 +46,12 @@ from tools.system import (
     AuthenticateFingerprintStrategy,
     OpenAppStrategy,
 )
+from tools.social_apps import (
+    SendWhatsAppMessageStrategy,
+    OpenTelegramChatStrategy,
+    OpenSocialProfileStrategy,
+    LaunchInstalledAppStrategy,
+)
 
 logger = logging.getLogger("VoidAdvancedCore.Registry")
 
@@ -95,6 +101,10 @@ class ToolRegistry:
             DownloadFileStrategy(),
             AuthenticateFingerprintStrategy(),
             OpenAppStrategy(),
+            SendWhatsAppMessageStrategy(),
+            OpenTelegramChatStrategy(),
+            OpenSocialProfileStrategy(),
+            LaunchInstalledAppStrategy(),
         ]
         for s in strategies:
             self.register(s)

@@ -85,6 +85,29 @@ cmd_cli() {
 
 cmd_start() {
     cd "$VOID_DIR"
+
+    # 1. Halt any running background Void instance before foreground launch
+    if [ -f "$PID_FILE" ]; then
+        OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo -e "${C_YELLOW}[INFO]${C_RESET} Stopping active background Void instance (PID: $OLD_PID)..."
+            kill -15 "$OLD_PID" 2>/dev/null || kill -9 "$OLD_PID" 2>/dev/null
+            rm -f "$PID_FILE"
+            sleep 1
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    # 2. Recycle any lingering app.py processes to free port 5000
+    ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
+    if [ -n "$ROGUE_PIDS" ]; then
+        echo -e "${C_YELLOW}[INFO]${C_RESET} Reclaiming port 5000: stopping stale Void process (PID: $ROGUE_PIDS)..."
+        kill -15 $ROGUE_PIDS 2>/dev/null || true
+        sleep 1
+        kill -9 $ROGUE_PIDS 2>/dev/null || true
+        sleep 0.5
+    fi
+
     echo -e "${C_GREEN}[INFO]${C_RESET} Starting Void Enterprise Stack on http://0.0.0.0:5000..."
     exec "$PYTHON_BIN" "$VOID_DIR/app.py" "$@"
 }
@@ -92,11 +115,25 @@ cmd_start() {
 cmd_start_bg() {
     cd "$VOID_DIR"
     if [ -f "$PID_FILE" ]; then
-        OLD_PID=$(cat "$PID_FILE")
-        if kill -0 "$OLD_PID" 2>/dev/null; then
-            echo -e "${C_YELLOW}[WARNING]${C_RESET} Void is already running with PID $OLD_PID."
+        OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo -e "${C_YELLOW}[INFO]${C_RESET} Void background service is already active with PID $OLD_PID."
+            echo -e "  • Web Dashboard: ${C_CYAN}http://localhost:5000${C_RESET}"
+            echo -e "  • Log stream:    ${C_CYAN}tail -f $HOME/.void.log${C_RESET}"
+            echo -e "  • To restart:    ${C_CYAN}void stop && void start-bg${C_RESET}"
             exit 0
         fi
+        rm -f "$PID_FILE"
+    fi
+
+    # Recycle any lingering unlinked processes
+    ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
+    if [ -n "$ROGUE_PIDS" ]; then
+        echo -e "${C_YELLOW}[INFO]${C_RESET} Reclaiming port 5000 from stale process ($ROGUE_PIDS)..."
+        kill -15 $ROGUE_PIDS 2>/dev/null || true
+        sleep 1
+        kill -9 $ROGUE_PIDS 2>/dev/null || true
+        sleep 0.5
     fi
 
     echo -e "${C_GREEN}[INFO]${C_RESET} Launching Void in background..."
@@ -117,8 +154,8 @@ cmd_start_bg() {
 
 cmd_stop() {
     if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if kill -0 "$PID" 2>/dev/null; then
+        PID=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
             echo -e "${C_YELLOW}[INFO]${C_RESET} Terminating Void process (PID: $PID)..."
             kill -15 "$PID" 2>/dev/null || kill -9 "$PID" 2>/dev/null
             rm -f "$PID_FILE"
@@ -132,7 +169,7 @@ cmd_stop() {
     ROGUE_PIDS=$(pgrep -f "python.*app.py" || true)
     if [ -n "$ROGUE_PIDS" ]; then
         echo -e "${C_YELLOW}[INFO]${C_RESET} Halting active Void processes: $ROGUE_PIDS"
-        kill -15 $ROGUE_PIDS 2>/dev/null || true
+        kill -15 $ROGUE_PIDS 2>/dev/null || kill -9 $ROGUE_PIDS 2>/dev/null
         echo -e "${C_GREEN}[SUCCESS]${C_RESET} Stopped."
     else
         echo -e "${C_CYAN}[INFO]${C_RESET} No running Void instances found."

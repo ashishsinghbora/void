@@ -54,3 +54,22 @@ def test_sse_stream_pep3333_compliance():
 
     for header in res.headers.keys():
         assert header.lower() not in prohibited_hop_by_hop, f"Prohibited hop-by-hop header found: {header}"
+
+
+def test_port_availability_and_fallback():
+    """Verifies that is_port_available and get_effective_port correctly detect and handle occupied ports."""
+    import socket
+    from api.web_server import is_port_available, get_effective_port
+
+    # Bind a temporary socket to simulate an occupied port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as dummy:
+        dummy.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        dummy.bind(("127.0.0.1", 0))
+        dummy.listen(1)
+        occupied_port = dummy.getsockname()[1]
+
+        assert not is_port_available("127.0.0.1", occupied_port)
+
+        effective = get_effective_port("127.0.0.1", occupied_port)
+        assert effective != occupied_port
+        assert is_port_available("127.0.0.1", effective)

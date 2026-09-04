@@ -105,8 +105,16 @@ def main():
     else:
         logger.info("Telegram remote control disabled (no token provided).")
 
-    # 4. Launch Production Waitress WSGI Web Server
-    run_web_server(host=args.host, port=args.port, threads=args.threads)
+    # 4. Launch Production Waitress WSGI Web Server with clean lifecycle management
+    try:
+        run_web_server(host=args.host, port=args.port, threads=args.threads)
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt. Shutting down Void platform...")
+    except Exception as e:
+        logger.error(f"Unexpected web server exception: {e}")
+    finally:
+        logger.info("Executing clean daemon and wake-lock teardown...")
+        global_daemon_supervisor.stop_all()
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ def sse_event_generator(event_bus: EventBus = global_event_bus, timeout: float =
             except queue.Empty:
                 # Keep-alive heartbeat ping to prevent connection teardown
                 yield ": keepalive\n\n"
-    except GeneratorExit:
+    except (GeneratorExit, BrokenPipeError, ConnectionResetError, OSError):
         logger.info("SSE client disconnected.")
     finally:
         event_bus.unsubscribe(client_queue)

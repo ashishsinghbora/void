@@ -87,6 +87,12 @@ if [ "$IS_TERMUX" -eq 1 ]; then
         sleep 1
     fi
 
+    # Stop any running Void processes to release ports, file locks, and wake-locks
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -f "python.*app.py" 2>/dev/null || true
+    fi
+    rm -f "$HOME/.void.pid" 2>/dev/null || true
+
     # Release any dangling wake-lock from previous runs so notifications stay quiet
     if command -v termux-wake-unlock >/dev/null 2>&1; then
         termux-wake-unlock >/dev/null 2>&1 || true

@@ -103,3 +103,36 @@ def test_session_timeout_manager():
 
     mgr.invalidate_session("user1")
     assert mgr.is_session_active("user1") is False
+
+
+def test_permission_manager_governance():
+    """Verifies that all permissions are marked optional and produce valid justification."""
+    from security.permissions import PermissionManager, PERMISSION_REGISTRY
+
+    # Verify all permissions exist in registry
+    assert "camera" in PERMISSION_REGISTRY
+    assert "storage" in PERMISSION_REGISTRY
+    assert "sms" in PERMISSION_REGISTRY
+    assert "location" in PERMISSION_REGISTRY
+
+    perms = PermissionManager.get_all_permissions()
+    assert len(perms) >= 7
+
+    # Ensure every single permission is marked optional (user sovereignty)
+    for p in perms:
+        assert p.is_mandatory is False
+        assert p.why_needed != ""
+        assert p.fallback_behavior != ""
+        assert p.how_to_manage != ""
+
+    # Verify explanation generation
+    explanation = PermissionManager.explain_permission("camera")
+    assert "PERMISSION NOTICE" in explanation
+    assert "Camera" in explanation
+    assert "100% voluntary" in explanation
+
+    # Verify CLI report generation
+    report = PermissionManager.generate_cli_report()
+    assert "VOID PRIVACY & ANDROID PERMISSIONS GOVERNANCE" in report
+    assert "100% OPTIONAL" in report
+

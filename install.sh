@@ -68,10 +68,21 @@ if [ "$IS_TERMUX" -eq 1 ]; then
     # Install pre-compiled cryptography binary from Termux pkg (avoids rust compilation)
     pkg install -y python-cryptography >/dev/null 2>&1 || true
 
-    # Check / trigger storage permission
+    echo ""
+    echo -e "${C_CYAN}----------------------------------------------------------------${C_RESET}"
+    echo -e "${C_BOLD}🛡️  PRIVACY & ANDROID PERMISSIONS POLICY${C_RESET}"
+    echo -e "  All Android hardware permissions (Camera, Storage, SMS, Location) are"
+    echo -e "  100% OPTIONAL and controlled manually by you at your discretion."
+    echo -e "  Void operates 100% locally on your phone with zero telemetry."
+    echo -e "  View what each permission does anytime by typing: ${C_CYAN}void permissions${C_RESET}"
+    echo -e "${C_CYAN}----------------------------------------------------------------${C_RESET}"
+    echo ""
+
+    # Optional storage link
     if [ ! -d "$HOME/storage" ]; then
-        log_info "Requesting Android Storage permissions (termux-setup-storage)..."
-        echo -e "${C_YELLOW}>>> If an Android permission popup appears, please tap 'ALLOW' <<<${C_RESET}"
+        log_info "Storage permission allows saving captured photos/files to ~/storage."
+        log_info "Triggering storage setup (termux-setup-storage)..."
+        echo -e "${C_YELLOW}>>> Tap 'ALLOW' if you wish to link shared storage (optional) <<<${C_RESET}"
         termux-setup-storage || true
         sleep 1
     fi

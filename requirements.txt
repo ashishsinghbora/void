@@ -1,4 +1,3 @@
-cactus-needle>=2.0.11
 flask>=3.0.0
 waitress>=3.0.0
 pyTelegramBotAPI>=4.12.0

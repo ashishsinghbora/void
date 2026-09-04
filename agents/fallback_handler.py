@@ -9,6 +9,9 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 
+from security.permissions import PermissionManager
+
+
 @dataclass
 class FallbackDecision:
     """Actionable decision envelope produced by fallback evaluation."""
@@ -35,11 +38,15 @@ class HardwareFallbackHandler:
                     fallback_arguments={"camera_id": "1", "filename": arguments.get("filename", "void_photo_front.jpg")},
                     remediation_advice="Back camera inaccessible. Automatically retrying with front camera.",
                 )
+            advice = (
+                "Camera permission required for photo capture.\n"
+                + PermissionManager.explain_permission("camera")
+            )
             return FallbackDecision(
                 should_fallback=False,
                 fallback_tool_name=None,
                 fallback_arguments={},
-                remediation_advice="Camera permission required. Please grant 'Camera' and 'Files/Storage' in Android App Settings for Termux:API.",
+                remediation_advice=advice,
             )
 
         # 2. SMS Send failure -> fallback to Android Share Sheet intent

@@ -63,6 +63,7 @@ show_help() {
     echo -e "  ${C_CYAN}status${C_RESET}             Check running status, memory, and telemetry"
     echo -e "  ${C_CYAN}test${C_RESET}               Run automated test suite (pytest)"
     echo -e "  ${C_CYAN}clean${C_RESET}              Run system and temporary file cleaner"
+    echo -e "  ${C_CYAN}permissions${C_RESET}        Inspect Android permissions status, rationale & privacy"
     echo -e "  ${C_CYAN}update${C_RESET}             Pull latest updates and sync dependencies"
     echo -e "  ${C_CYAN}help${C_RESET}               Show this help message"
     echo ""
@@ -183,6 +184,11 @@ cmd_clean() {
     "$PYTHON_BIN" -c "from extensions.system_cleaner import SystemCleanerStrategy; print(SystemCleanerStrategy().run_safe(dry_run=False).output['summary'])"
 }
 
+cmd_permissions() {
+    cd "$VOID_DIR"
+    "$PYTHON_BIN" -c "from security.permissions import PermissionManager; print(PermissionManager.generate_cli_report())"
+}
+
 cmd_update() {
     cd "$VOID_DIR"
     echo -e "${C_CYAN}[INFO]${C_RESET} Pulling latest code from GitHub..."
@@ -218,6 +224,9 @@ case "$SUBCMD" in
     clean)
         cmd_clean "$@"
         ;;
+    permissions|perm)
+        cmd_permissions "$@"
+        ;;
     update)
         cmd_update "$@"
         ;;
@@ -230,3 +239,4 @@ case "$SUBCMD" in
         exit 1
         ;;
 esac
+

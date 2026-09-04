@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Termux%20%7C%20Linux%20%7C%20macOS-cyan.svg)](https://termux.dev)
 [![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2012MB%20(Peak)-emerald.svg)](#-memory-benchmarks--dsa-optimizations)
-[![Tests](https://img.shields.io/badge/tests-34%2F34%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Tests](https://img.shields.io/badge/tests-35%2F35%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
 [![Dashboard](https://img.shields.io/badge/dashboard-GitHub%20Pages%20Ready-purple.svg)](https://ashishsinghbora.github.io/void/)
 
 **Void** is an enterprise-grade, high-performance, ultra-low-memory local agentic platform engineered specifically for Android/Termux and mobile edge hardware. It bridges autonomous ReAct reasoning loops directly with low-level Android operating system capabilities, hardware sensors, proactive automation daemons, and a glassmorphic cyber-styled dashboard.
@@ -109,13 +109,16 @@ void stop
 # 6. Reclaim Storage via System Cleaner Plugin
 void clean
 
-# 7. Run Full Automated Test Suite (34 Tests)
+# 7. Inspect Android Permissions Status, Rationale & Privacy
+void permissions
+
+# 8. Run Full Automated Test Suite (35 Tests)
 void test
 
-# 8. Pull Updates from GitHub and Sync Dependencies
+# 9. Pull Updates from GitHub and Sync Dependencies
 void update
 
-# 9. View CLI Help & Options
+# 10. View CLI Help & Options
 void help
 ```
 
@@ -367,19 +370,20 @@ tests/test_security.py::test_url_sanitization PASSED                     [ 58%]
 tests/test_security.py::test_string_sanitizer PASSED                     [ 61%]
 tests/test_security.py::test_arg_vector_validation PASSED                [ 64%]
 tests/test_security.py::test_aes256_credential_vault PASSED              [ 67%]
-tests/test_security.py::test_rate_limiter PASSED                         [ 70%]
-tests/test_security.py::test_session_timeout_manager PASSED              [ 73%]
-tests/test_simulator.py::test_simulator_hardware_status PASSED           [ 76%]
-tests/test_simulator.py::test_simulator_actions PASSED                   [ 79%]
+tests/test_security.py::test_rate_limiter PASSED                         [ 68%]
+tests/test_security.py::test_session_timeout_manager PASSED              [ 71%]
+tests/test_security.py::test_permission_manager_governance PASSED        [ 74%]
+tests/test_simulator.py::test_simulator_hardware_status PASSED           [ 77%]
+tests/test_simulator.py::test_simulator_actions PASSED                   [ 80%]
 tests/test_storage.py::test_sqlite_wal_mode PASSED                       [ 82%]
 tests/test_storage.py::test_sliding_window_log_pruning PASSED            [ 85%]
 tests/test_storage.py::test_clipboard_repository_deduplication PASSED    [ 88%]
 tests/test_tools.py::test_tool_registry_registration PASSED              [ 91%]
 tests/test_tools.py::test_battery_strategy_execution PASSED              [ 94%]
-tests/test_tools.py::test_torch_strategy_execution PASSED                [ 97%]
+tests/test_torch_strategy_execution PASSED                                [ 97%]
 tests/test_tools.py::test_sms_strategy_execution PASSED                  [100%]
 
-============================== 34 passed in 9.73s ==============================
+============================== 35 passed in 7.16s ==============================
 ```
 
 ---

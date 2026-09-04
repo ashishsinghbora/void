@@ -150,3 +150,15 @@ def list_extensions():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
+
+@api_bp.route("/api/permissions")
+def list_permissions():
+    """Returns live status and plain-English justification for all Android permissions."""
+    try:
+        from security.permissions import PermissionManager
+        perms = [p.to_dict() for p in PermissionManager.get_all_permissions()]
+        return jsonify(perms), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+

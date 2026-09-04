@@ -101,7 +101,7 @@ class SecureCommandExecutor:
             return res.stdout.strip() if res.stdout.strip() else "Success"
 
         except subprocess.TimeoutExpired:
-            logger.error(f"Execution timed out for {args[0]} after {timeout}s")
+            logger.warning(f"Command '{args[0]}' timed out after {timeout}s (Ensure Termux:API app is opened & permissions granted).")
             return f"Error ({args[0]}): Execution timed out."
         except FileNotFoundError:
             if not IS_TERMUX and allow_simulation and TermuxHardwareSimulator.is_simulator_applicable(args[0]):

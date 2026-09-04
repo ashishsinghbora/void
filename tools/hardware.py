@@ -22,7 +22,7 @@ class BatteryStatusStrategy(ToolStrategy):
         )
 
     def execute(self, **kwargs: Any) -> ToolExecutionResult:
-        res = SecureCommandExecutor.run(["termux-battery-status"])
+        res = SecureCommandExecutor.run(["termux-battery-status"], timeout=4)
         if res.startswith("Error"):
             return ToolExecutionResult(success=False, output=None, error=res, duration_ms=0)
 

@@ -79,7 +79,7 @@ class NotificationInterceptorDaemon:
 
     def process_notifications(self) -> None:
         """Pulls notification list and executes zero-copy streaming analysis."""
-        res = SecureCommandExecutor.run(["termux-notification-list"])
+        res = SecureCommandExecutor.run(["termux-notification-list"], timeout=4)
         if not res or res.startswith("Error"):
             return
 

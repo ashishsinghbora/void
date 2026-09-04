@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Termux%20%7C%20Linux%20%7C%20macOS-cyan.svg)](https://termux.dev)
 [![Memory RSS](https://img.shields.io/badge/RAM%20RSS-%3C%2012MB%20(Peak)-emerald.svg)](#-memory-benchmarks--dsa-optimizations)
-[![Tests](https://img.shields.io/badge/tests-35%2F35%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
+[![Tests](https://img.shields.io/badge/tests-36%2F36%20passed%20(100%25)-green.svg)](#-automated-testing--verification)
 [![Dashboard](https://img.shields.io/badge/dashboard-GitHub%20Pages%20Ready-purple.svg)](https://ashishsinghbora.github.io/void/)
 
 **Void** is an enterprise-grade, high-performance, ultra-low-memory local agentic platform engineered specifically for Android/Termux and mobile edge hardware. It bridges autonomous ReAct reasoning loops directly with low-level Android operating system capabilities, hardware sensors, proactive automation daemons, and a glassmorphic cyber-styled dashboard.
@@ -118,7 +118,7 @@ void clean
 # 7. Inspect Android Permissions Status, Rationale & Privacy
 void permissions
 
-# 8. Run Full Automated Test Suite (35 Tests)
+# 8. Run Full Automated Test Suite (36 Tests)
 void test
 
 # 9. Pull Updates from GitHub and Sync Dependencies
@@ -383,20 +383,21 @@ pytest -v
 
 ```
 ============================== test session starts ==============================
-collected 35 items
+collected 36 items
 
 tests/test_api_sse.py::test_flask_app_routes PASSED                      [  2%]
 tests/test_api_sse.py::test_event_bus_pub_sub PASSED                     [  5%]
-tests/test_daemons.py::test_notification_otp_classification PASSED       [  8%]
-tests/test_daemons.py::test_notification_spam_classification PASSED      [ 11%]
-tests/test_daemons.py::test_routine_crontab_generation PASSED            [ 14%]
-tests/test_extensions.py::test_extension_manager_lifecycle PASSED        [ 17%]
-tests/test_extensions.py::test_crypto_tracker_strategy PASSED            [ 20%]
-tests/test_extensions.py::test_github_monitor_strategy PASSED            [ 23%]
-tests/test_extensions.py::test_system_cleaner_strategy PASSED            [ 26%]
-tests/test_extensions.py::test_custom_dynamic_plugin PASSED              [ 29%]
-tests/test_extensions.py::test_react_agent_extension_heuristics PASSED   [ 32%]
-tests/test_extensions.py::test_api_extensions_route PASSED               [ 35%]
+tests/test_api_sse.py::test_sse_stream_pep3333_compliance PASSED         [  8%]
+tests/test_daemons.py::test_notification_otp_classification PASSED       [ 11%]
+tests/test_daemons.py::test_notification_spam_classification PASSED      [ 13%]
+tests/test_daemons.py::test_routine_crontab_generation PASSED            [ 16%]
+tests/test_extensions.py::test_extension_manager_lifecycle PASSED        [ 19%]
+tests/test_extensions.py::test_crypto_tracker_strategy PASSED            [ 22%]
+tests/test_extensions.py::test_github_monitor_strategy PASSED            [ 25%]
+tests/test_extensions.py::test_system_cleaner_strategy PASSED            [ 27%]
+tests/test_extensions.py::test_custom_dynamic_plugin PASSED              [ 30%]
+tests/test_extensions.py::test_react_agent_extension_heuristics PASSED   [ 33%]
+tests/test_extensions.py::test_api_extensions_route PASSED               [ 36%]
 tests/test_lru_cache.py::test_lru_cache_basic_ops PASSED                 [ 38%]
 tests/test_lru_cache.py::test_lru_eviction PASSED                        [ 41%]
 tests/test_lru_cache.py::test_lru_cache_thread_safety PASSED             [ 44%]
@@ -406,22 +407,22 @@ tests/test_react_agent.py::test_react_agent_execution PASSED             [ 52%]
 tests/test_security.py::test_phone_number_sanitization PASSED            [ 55%]
 tests/test_security.py::test_url_sanitization PASSED                     [ 58%]
 tests/test_security.py::test_string_sanitizer PASSED                     [ 61%]
-tests/test_security.py::test_arg_vector_validation PASSED                [ 64%]
-tests/test_security.py::test_aes256_credential_vault PASSED              [ 67%]
-tests/test_security.py::test_rate_limiter PASSED                         [ 68%]
-tests/test_security.py::test_session_timeout_manager PASSED              [ 71%]
-tests/test_security.py::test_permission_manager_governance PASSED        [ 74%]
+tests/test_security.py::test_arg_vector_validation PASSED                [ 63%]
+tests/test_security.py::test_aes256_credential_vault PASSED              [ 66%]
+tests/test_security.py::test_rate_limiter PASSED                         [ 69%]
+tests/test_security.py::test_session_timeout_manager PASSED              [ 72%]
+tests/test_security.py::test_permission_manager_governance PASSED        [ 75%]
 tests/test_simulator.py::test_simulator_hardware_status PASSED           [ 77%]
 tests/test_simulator.py::test_simulator_actions PASSED                   [ 80%]
-tests/test_storage.py::test_sqlite_wal_mode PASSED                       [ 82%]
-tests/test_storage.py::test_sliding_window_log_pruning PASSED            [ 85%]
+tests/test_storage.py::test_sqlite_wal_mode PASSED                       [ 83%]
+tests/test_storage.py::test_sliding_window_log_pruning PASSED            [ 86%]
 tests/test_storage.py::test_clipboard_repository_deduplication PASSED    [ 88%]
 tests/test_tools.py::test_tool_registry_registration PASSED              [ 91%]
 tests/test_tools.py::test_battery_strategy_execution PASSED              [ 94%]
 tests/test_torch_strategy_execution PASSED                                [ 97%]
 tests/test_tools.py::test_sms_strategy_execution PASSED                  [100%]
 
-============================== 35 passed in 7.16s ==============================
+============================== 36 passed in 15.89s ==============================
 ```
 
 ---

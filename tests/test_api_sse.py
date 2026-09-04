@@ -38,3 +38,19 @@ def test_event_bus_pub_sub():
     assert item["data"]["val"] == 42
 
     global_event_bus.unsubscribe(q)
+
+
+def test_sse_stream_pep3333_compliance():
+    """Verifies that /api/stream returns SSE headers compliant with PEP 3333 (no hop-by-hop Connection header)."""
+    app = create_app()
+    client = app.test_client()
+
+    prohibited_hop_by_hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
+
+    res = client.get("/api/stream")
+    assert res.status_code == 200
+    assert res.mimetype == "text/event-stream"
+    assert res.headers.get("Cache-Control") == "no-cache"
+
+    for header in res.headers.keys():
+        assert header.lower() not in prohibited_hop_by_hop, f"Prohibited hop-by-hop header found: {header}"

@@ -65,14 +65,17 @@ def get_screen_hub() -> Tuple[str, Any]:
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("📸 Capture Screen", callback_data="cb_screenshot"),
+        types.InlineKeyboardButton("👁️ Inspect Screen", callback_data="hub_screen_inspect"),
+    )
+    markup.add(
         types.InlineKeyboardButton("👆 Tap Coordinates", callback_data="input_tap"),
-    )
-    markup.add(
         types.InlineKeyboardButton("↔️ Swipe Gesture", callback_data="input_swipe"),
-        types.InlineKeyboardButton("⌨️ Keyboard Type", callback_data="input_type"),
     )
     markup.add(
+        types.InlineKeyboardButton("⌨️ Keyboard Type", callback_data="input_type"),
         types.InlineKeyboardButton("🏠 Home Key", callback_data="key_home"),
+    )
+    markup.add(
         types.InlineKeyboardButton("🔙 Back Key", callback_data="key_back"),
     )
 
@@ -112,7 +115,14 @@ def get_vault_hub() -> Tuple[str, Any]:
         types.InlineKeyboardButton("🔗 Pair Group Vault", callback_data="vault_link_guide"),
     )
     markup.add(
-        types.InlineKeyboardButton("📊 Brain Vault Stats", callback_data="vault_status"),
+        types.InlineKeyboardButton("🤖 Agent Profile", callback_data="hub_agent_profile"),
+        types.InlineKeyboardButton("📜 Task History", callback_data="hub_agent_history"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("📂 Scripts Workspace", callback_data="hub_scripts_list"),
+        types.InlineKeyboardButton("📊 Vault Stats", callback_data="vault_status"),
+    )
+    markup.add(
         types.InlineKeyboardButton("🔍 Search Documents", callback_data="vault_search_guide"),
     )
 
@@ -121,6 +131,7 @@ def get_vault_hub() -> Tuple[str, Any]:
 
     markup.add(types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main"))
     return card, markup
+
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +359,56 @@ def register_hub_handlers(bot: Any, controller: Any) -> None:
             txt = "🗺️ *Google Maps Guide:*\nSend: `/ai navigate to airport in google maps`."
             safe_edit_message_text(bot, txt, chat_id, msg_id, reply_markup=get_apps_hub()[1], parse_mode="Markdown")
 
+        elif data == "hub_screen_inspect":
+            res = global_vision_agent.inspect_active_screen()
+            summary = res.get("readable_summary", "Live screen inspected.")
+            safe_edit_message_text(bot, summary, chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+
+        elif data == "hub_agent_profile":
+            from modules.agent_workspace import global_agent_workspace
+            prof = global_agent_workspace.get_agent_profile()
+            txt = (
+                "🤖 *Void Autonomous Digital Twin Profile*\n\n"
+                f"• *Status:* 🟢 `{prof['status']}`\n"
+                f"• *Active Engine:* `{prof['active_engine']}`\n"
+                f"• *RAM Limit:* `{prof['ram_limit_mb']} MB` (Strictly < 2048 MB)\n"
+                f"• *Tasks Completed:* `{prof['tasks_completed']}`\n"
+                f"• *Automation Scripts:* `{prof['automation_scripts_count']}` in `{prof['workspace_dir']}`\n"
+                f"• *Brain Directory:* `{prof['brain_dir']}`"
+            )
+            safe_edit_message_text(bot, txt, chat_id, msg_id, reply_markup=get_vault_hub()[1], parse_mode="Markdown")
+
+        elif data == "hub_agent_history":
+            from modules.agent_workspace import global_agent_workspace
+            recent = global_agent_workspace.get_recent_tasks(limit=5)
+            if not recent:
+                txt = "📜 *Agent Task History:*\n\n_No tasks recorded yet._"
+            else:
+                lines = ["📜 *Recent Agent Tasks:*\n"]
+                for t in reversed(recent):
+                    icon = "✅" if t.get("success") else "❌"
+                    lines.append(f"{icon} [{t.get('date', '')}] \"_{t.get('query', '')[:50]}_\"")
+                txt = "\n".join(lines)
+            safe_edit_message_text(bot, txt, chat_id, msg_id, reply_markup=get_vault_hub()[1], parse_mode="Markdown")
+
+        elif data == "hub_scripts_list":
+            from modules.agent_workspace import global_agent_workspace
+            scripts = global_agent_workspace.list_scripts()
+            if not scripts:
+                txt = (
+                    "📂 *Automation Scripts Workspace (`~/.void/scripts/`)*\n\n"
+                    "_No custom scripts found in workspace._\n"
+                    "Place `.py` or `.sh` files in `~/.void/scripts/` and run with `/run_script <name>`."
+                )
+            else:
+                lines = [f"📂 *Automation Scripts ({len(scripts)} found):*\n"]
+                for s in scripts:
+                    lines.append(f"• `{s['name']}` ({s['type']}, {s['size_bytes']}B)")
+                lines.append("\nExecute via: `/run_script <filename>`")
+                txt = "\n".join(lines)
+            safe_edit_message_text(bot, txt, chat_id, msg_id, reply_markup=get_vault_hub()[1], parse_mode="Markdown")
+
         elif data == "hub_research_guide":
             txt = "🔍 *Autonomous Research Guide:*\nSend: `/ai research quantum computing breakthroughs and save note`."
             safe_edit_message_text(bot, txt, chat_id, msg_id, reply_markup=get_research_hub()[1], parse_mode="Markdown")
+

@@ -290,36 +290,83 @@ class LaunchInstalledAppStrategy(ToolStrategy):
                 duration_ms=0,
             )
 
-        # Universal Camera Intent Fallback for OnePlus/Samsung/Pixel
-        if clean in ("camera", "cam"):
-            cam_intent = SecureCommandExecutor.run(["am", "start", "-a", "android.media.action.STILL_IMAGE_CAMERA"], timeout=5)
-            if not cam_intent.startswith("Error"):
-                return ToolExecutionResult(success=True, output="Successfully launched Device Camera", error=None, duration_ms=0)
-            # Try alternate OEM camera packages
-            for oem_pkg in ("com.oneplus.camera", "com.oplus.camera", "com.google.android.GoogleCamera", "com.sec.android.app.camera"):
-                res_oem = SecureCommandExecutor.run(["monkey", "-p", oem_pkg, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"], timeout=5)
-                if not res_oem.startswith("Error") and "No activities found" not in res_oem:
-                    return ToolExecutionResult(success=True, output=f"Successfully launched Camera ({oem_pkg})", error=None, duration_ms=0)
+        # Direct URI dispatch mapping for instant, reliable Android 14/15 launch
+        DIRECT_URI_MAP = {
+            "whatsapp": "whatsapp://",
+            "youtube": "https://www.youtube.com",
+            "telegram": "tg://",
+            "chrome": "https://www.google.com",
+            "maps": "geo:0,0",
+            "spotify": "spotify://",
+        }
 
-        # Launch via monkey launcher
-        cmd = ["monkey", "-p", package, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"]
-        res = SecureCommandExecutor.run(cmd, timeout=5)
-
-        if "No activities found to run" in res or res.startswith("Error"):
-            # Try am start intent fallback
-            am_cmd = ["am", "start", "-p", package]
-            am_res = SecureCommandExecutor.run(am_cmd, timeout=5)
-            if am_res.startswith("Error"):
+        # 1. Direct App URI fast path
+        if clean in DIRECT_URI_MAP:
+            target_uri = DIRECT_URI_MAP[clean]
+            t_res = SecureCommandExecutor.run(["termux-open-url", target_uri], timeout=5)
+            if not t_res.startswith("Error"):
                 return ToolExecutionResult(
-                    success=False,
-                    output=None,
-                    error=f"Could not launch app '{app_name}' with package '{package}': {am_res}",
+                    success=True,
+                    output=f"Successfully launched '{app_name}' via direct intent.",
+                    error=None,
                     duration_ms=0,
                 )
 
+        # 2. Direct Android Settings fast path
+        if clean in ("settings", "setting"):
+            s_res = SecureCommandExecutor.run(["am", "start", "-a", "android.settings.SETTINGS", "-f", "0x10000000"], timeout=5)
+            if not s_res.startswith("Error"):
+                return ToolExecutionResult(success=True, output="Successfully opened Android Settings", error=None, duration_ms=0)
+
+        # 3. Universal Camera Intent Fallback for OnePlus/Samsung/Pixel/Xiaomi
+        if clean in ("camera", "cam"):
+            cam_intent = SecureCommandExecutor.run(["am", "start", "-a", "android.media.action.STILL_IMAGE_CAMERA", "-f", "0x10000000"], timeout=5)
+            if not cam_intent.startswith("Error"):
+                return ToolExecutionResult(success=True, output="Successfully launched Device Camera", error=None, duration_ms=0)
+            for oem_pkg in ("com.oneplus.camera", "com.oplus.camera", "com.google.android.GoogleCamera", "com.sec.android.app.camera"):
+                res_oem = SecureCommandExecutor.run(["am", "start", "--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", "-p", oem_pkg, "-f", "0x10000000"], timeout=5)
+                if not res_oem.startswith("Error") and "Activity not started" not in res_oem:
+                    return ToolExecutionResult(success=True, output=f"Successfully launched Camera ({oem_pkg})", error=None, duration_ms=0)
+
+        # 4. Standard Activity Intent with FLAG_ACTIVITY_NEW_TASK (0x10000000) for Android 14/15
+        am_cmd = ["am", "start", "--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", "-p", package, "-f", "0x10000000"]
+        res = SecureCommandExecutor.run(am_cmd, timeout=5)
+
+        if not res.startswith("Error") and "Failure calling service" not in res and "Activity not started" not in res:
+            return ToolExecutionResult(
+                success=True,
+                output=f"Successfully launched '{app_name}' (Package: {package})",
+                error=None,
+                duration_ms=0,
+            )
+
+        # 5. Resolve activity component dynamically
+        comp_res = SecureCommandExecutor.run(["cmd", "package", "resolve-activity", "--brief", package], timeout=5)
+        if comp_res and "/" in comp_res and not comp_res.startswith("Error"):
+            component = comp_res.strip().split()[-1]
+            c_res = SecureCommandExecutor.run(["am", "start", "--user", "0", "-n", component, "-f", "0x10000000"], timeout=5)
+            if not c_res.startswith("Error") and "Activity not started" not in c_res:
+                return ToolExecutionResult(
+                    success=True,
+                    output=f"Successfully launched '{app_name}' via component {component}",
+                    error=None,
+                    duration_ms=0,
+                )
+
+        # 6. Final monkey launcher fallback
+        m_cmd = ["monkey", "-p", package, "--user", "0", "-c", "android.intent.category.LAUNCHER", "1"]
+        m_res = SecureCommandExecutor.run(m_cmd, timeout=5)
+        if not m_res.startswith("Error") and "No activities found" not in m_res:
+            return ToolExecutionResult(
+                success=True,
+                output=f"Successfully launched '{app_name}' via Launcher",
+                error=None,
+                duration_ms=0,
+            )
+
         return ToolExecutionResult(
-            success=True,
-            output=f"Successfully launched '{app_name}' (Package: {package})",
-            error=None,
+            success=False,
+            output=None,
+            error=f"Could not launch app '{app_name}' with package '{package}'. Error: {res}",
             duration_ms=0,
         )

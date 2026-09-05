@@ -208,7 +208,7 @@ class ToolRegistry:
 
 
 def register_advanced_strategies(registry: ToolRegistry) -> None:
-    """Registers advanced capability strategies (VisionAgent, DeepLink, ScraperVault, NotificationWatcher)."""
+    """Registers advanced capability strategies (VisionAgent, DeepLink, ScraperVault, NotificationWatcher, Script Automation)."""
     try:
         from tools.advanced_modules import (
             VisionTapStrategy,
@@ -220,6 +220,8 @@ def register_advanced_strategies(registry: ToolRegistry) -> None:
             ManageSshStrategy,
             BrainSyncStrategy,
             ResearchYouTubeStrategy,
+            InspectScreenStrategy,
+            RunAutomationScriptStrategy,
         )
         for s in [
             VisionTapStrategy(),
@@ -231,8 +233,13 @@ def register_advanced_strategies(registry: ToolRegistry) -> None:
             ManageSshStrategy(),
             BrainSyncStrategy(),
             ResearchYouTubeStrategy(),
+            InspectScreenStrategy(),
+            RunAutomationScriptStrategy(),
         ]:
             registry.register(s)
+
+        if "inspect_screen" in registry:
+            registry._tools["see_screen"] = registry._tools["inspect_screen"]
     except Exception as e:
         logger.warning(f"Failed to register advanced tool strategies: {e}")
 
@@ -240,4 +247,5 @@ def register_advanced_strategies(registry: ToolRegistry) -> None:
 # Global default registry instance
 global_tool_registry = ToolRegistry()
 register_advanced_strategies(global_tool_registry)
+
 

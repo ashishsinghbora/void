@@ -17,6 +17,8 @@ from core.model_manager import global_model_manager
 from extensions.manager import global_extension_manager
 from tools.registry import global_tool_registry
 from storage.repository import ExecutionLogRepository
+from modules.agent_workspace import global_agent_workspace
+
 
 from telegram.database.db_manager import global_bot_db
 from telegram.database.models import UserRole, UserTier
@@ -75,7 +77,14 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             "• *Remote Shell & Compute Controls:*\n"
             "  • `/sh <cmd>` - Remote bash command execution\n"
             "  • `/ssh [start|stop]` - Termux OpenSSH daemon credentials\n"
+            "  • `/ssh setpass <pwd>` - Set SSH login password directly\n"
             "  • `/ram [mb]` - Dynamic RAM limit (< 2048 MB ceiling)\n\n"
+            "• *AI Agent, Memory & Workspace:*\n"
+            "  • `/agent` - Live AI digital twin status & active model\n"
+            "  • `/history` - Recent task execution history & results\n"
+            "  • `/skills` - Active agent capabilities catalog\n"
+            "  • `/scripts` - User automation scripts workspace (`~/.void/scripts/`)\n"
+            "  • `/run_script <name>` - Run custom Python or Bash script\n\n"
             "• *Mobile Touch & Screen Controls:*\n"
             "  • `/tap <x> <y>` - Touch coordinate simulation\n"
             "  • `/swipe <x1> <y1> <x2> <y2>` - Screen swipe gesture\n"
@@ -93,7 +102,7 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             "  • `/billing` - Telegram Stars subscriptions & upgrades\n\n"
             "👇 *Select an action from the dashboard below:*"
         )
-        bot.reply_to(message, text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
+        safe_reply(bot, message, text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
 
     @bot.message_handler(commands=["sh", "bash"])
     def handle_bash_command(message):
@@ -102,7 +111,7 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             return
         parts = message.text.strip().split(maxsplit=1)
         if len(parts) < 2:
-            bot.reply_to(message, "💻 *Usage:* `/sh <command>`\nExample: `/sh uname -a` or `/sh free -m`", parse_mode="Markdown")
+            safe_reply(bot, message, "💻 *Usage:* `/sh <command>`\nExample: `/sh uname -a` or `/sh free -m`", parse_mode="Markdown")
             return
         cmd = parts[1].strip()
         from modules.terminal_service import global_terminal_service
@@ -113,7 +122,8 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         if not out_text.strip():
             out_text = "(command produced no output)"
         status_icon = "✅" if res.get("returncode", 0) == 0 else "❌"
-        bot.reply_to(
+        safe_reply(
+            bot,
             message,
             f"{status_icon} *Command:* `{cmd}`\n*Exit Code:* `{res.get('returncode', 0)}`\n```bash\n{out_text}\n```",
             parse_mode="Markdown",
@@ -126,6 +136,13 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             return
         parts = message.text.strip().split()
         from modules.terminal_service import global_terminal_service
+
+        if len(parts) >= 3 and parts[1].lower() in ("setpass", "pass", "password"):
+            new_pwd = parts[2].strip()
+            res = global_terminal_service.set_ssh_password(new_pwd)
+            safe_reply(bot, message, res.get("message", str(res)), parse_mode="Markdown")
+            return
+
         if len(parts) > 1:
             action = parts[1].lower()
             if action in ("start", "up", "on"):
@@ -133,7 +150,115 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             elif action in ("stop", "down", "off"):
                 global_terminal_service.stop_ssh()
         card = global_terminal_service.get_connection_card()
-        bot.reply_to(message, card, parse_mode="Markdown")
+        safe_reply(bot, message, card, parse_mode="Markdown")
+
+    @bot.message_handler(commands=["agent", "brain"])
+    def handle_agent_status(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        profile = global_agent_workspace.get_agent_profile()
+        card = (
+            "🤖 *Void Autonomous Digital Twin Profile*\n\n"
+            f"• *Status:* 🟢 `{profile['status']}`\n"
+            f"• *Active Model Engine:* `{profile['active_engine']}`\n"
+            f"• *Installed Models:* `{profile['installed_models_count']}` local files\n"
+            f"• *RAM Ceiling:* `{profile['ram_limit_mb']} MB` (Strictly < 2048 MB, LMK-immune)\n"
+            f"• *Tasks Completed:* `{profile['tasks_completed']}` recorded in history\n"
+            f"• *Automation Scripts:* `{profile['automation_scripts_count']}` in `{profile['workspace_dir']}`\n"
+            f"• *Brain Directory:* `{profile['brain_dir']}`\n\n"
+            "⚡ _Commands: `/history` for previous work, `/skills` for capabilities, `/scripts` for code automation._"
+        )
+        safe_reply(bot, message, card, parse_mode="Markdown")
+
+    @bot.message_handler(commands=["history", "tasks"])
+    def handle_agent_history(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        recent = global_agent_workspace.get_recent_tasks(limit=7)
+        if not recent:
+            safe_reply(bot, message, "📜 *Agent Task History:*\n\n_No tasks recorded yet. Give the agent an instruction!_", parse_mode="Markdown")
+            return
+        lines = ["📜 *Agent Task History (Recent Work):*\n"]
+        for idx, t in enumerate(reversed(recent), start=1):
+            status = "✅" if t.get("success") else "❌"
+            tools = ", ".join(t.get("tools_used", [])) or "direct"
+            lines.append(f"{idx}. {status} *[{t.get('date', 'Unknown')}]*")
+            lines.append(f"   Query: \"_{t.get('query', '')[:60]}_\"")
+            if tools != "direct":
+                lines.append(f"   Tools: `{tools}`")
+            if t.get("reasoning"):
+                lines.append(f"   Thought: _{t.get('reasoning')[:80]}..._")
+            lines.append("")
+        safe_reply(bot, message, "\n".join(lines), parse_mode="Markdown")
+
+    @bot.message_handler(commands=["skills", "capabilities"])
+    def handle_agent_skills(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        skills = global_agent_workspace.get_skills()
+        lines = ["⚡ *Void Digital Twin Capabilities & Skills:*\n"]
+        for k, desc in skills.items():
+            clean_title = k.replace("_", " ").title()
+            lines.append(f"• *{clean_title}:*\n  _{desc}_")
+        lines.append("\n_All skills execute asynchronously and locally under the strict 2GB memory budget._")
+        safe_reply(bot, message, "\n".join(lines), parse_mode="Markdown")
+
+    @bot.message_handler(commands=["scripts", "workspace"])
+    def handle_scripts_list(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        scripts = global_agent_workspace.list_scripts()
+        if not scripts:
+            text = (
+                "📂 *Automation Scripts Workspace (`~/.void/scripts/`)*\n\n"
+                "_No custom scripts found in workspace._\n\n"
+                "💡 *How to add automation scripts:*\n"
+                "• Place Python (`.py`) or Bash (`.sh`) scripts in `~/.void/scripts/`\n"
+                "• Or ask the agent: _\"create script clean_temp.sh to remove old logs\"_\n"
+                "• Execute anytime via: `/run_script <name>`"
+            )
+            safe_reply(bot, message, text, parse_mode="Markdown")
+            return
+
+        lines = [f"📂 *Automation Scripts Workspace* ({len(scripts)} scripts in `~/.void/scripts/`):\n"]
+        for s in scripts:
+            lines.append(f"• `{s['name']}` ({s['type']}, {s['size_bytes']} bytes)")
+            lines.append(f"  Modified: {s['modified']}")
+        lines.append("\n🚀 *Execute with:* `/run_script <filename>`")
+        safe_reply(bot, message, "\n".join(lines), parse_mode="Markdown")
+
+    @bot.message_handler(commands=["run_script", "exec_script"])
+    def handle_run_script(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            safe_reply(bot, message, "💻 *Usage:* `/run_script <filename>`\nExample: `/run_script test.py`", parse_mode="Markdown")
+            return
+        script_name = parts[1].strip()
+        status_msg = safe_reply(bot, message, f"⚙️ *Executing script:* `{script_name}`...", parse_mode="Markdown")
+        res = global_agent_workspace.run_script(script_name)
+        if status_msg and hasattr(status_msg, "message_id"):
+            try:
+                bot.delete_message(message.chat.id, status_msg.message_id)
+            except Exception:
+                pass
+        icon = "✅" if res.get("success") else "❌"
+        output = res.get("output") or res.get("error") or "(No output)"
+        if len(output) > 3500:
+            output = output[:3500] + "\n... [truncated]"
+        safe_reply(
+            bot,
+            message,
+            f"{icon} *Script Run:* `{script_name}`\n*Exit Code:* `{res.get('returncode', 0)}`\n```\n{output}\n```",
+            parse_mode="Markdown",
+        )
+
 
     @bot.message_handler(commands=["ram"])
     def handle_ram_command(message):
@@ -620,6 +745,23 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             reply_text = response.conversational_reply or f"✨ *Task Completed:*\n{response.reasoning}"
             safe_reply(bot, message, reply_text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
 
+            # Persist to Agent Workspace Task History
+            global_agent_workspace.record_task(
+                query=query,
+                reasoning=response.reasoning,
+                tools_used=response.tool_calls,
+                success=True,
+                result_summary=reply_text,
+            )
+
         except Exception as e:
             logger.error(f"Telegram processing error: {e}")
             safe_reply(bot, message, f"⚠️ *Execution notice:* {str(e)}", parse_mode="Markdown")
+            global_agent_workspace.record_task(
+                query=query,
+                reasoning="",
+                tools_used=[],
+                success=False,
+                result_summary=str(e),
+            )
+

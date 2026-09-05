@@ -236,17 +236,27 @@ Turn your Android device into a secure, accessible remote workstation:
   /sh free -m
   /sh pkg list-installed
   ```
-- **OpenSSH Daemon Management:**
+- **OpenSSH Daemon Management & In-Chat Password Setting:**
   ```bash
-  /ssh start    # Launches sshd on port 8022
-  /ssh stop     # Gracefully terminates sshd
-  /ssh          # Displays connection card with available IPs and command
+  /ssh start              # Launches sshd on port 8022
+  /ssh stop               # Gracefully terminates sshd
+  /ssh                    # Displays connection card with available IPs and command
+  /ssh setpass <password> # Sets Termux SSH login password directly in Telegram!
   ```
 - **Dynamic RAM Control:**
   ```bash
   /ram          # Displays current RAM limit, model ceiling, and compute profile
   /ram 1024     # Sets dynamic RAM limit to 1024 MB (strictly clamped <= 2048 MB)
   ```
+- **Digital Twin Agent Workspace & History:**
+  ```bash
+  /agent                # Displays active model engine, RAM limit, and status
+  /skills               # Lists all 9 digital twin capabilities & skills
+  /history              # Shows recent task history, queries, tools, and results
+  /scripts              # Lists custom user automation scripts in ~/.void/scripts/
+  /run_script <name>    # Executes a Python or Bash automation script
+  ```
+
 
 ---
 

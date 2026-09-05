@@ -16,6 +16,7 @@ from modules.deep_links import DeepLinkEngine, global_deep_links
 from modules.scraper_vault import ScraperVaultService, global_scraper_vault
 from modules.terminal_service import TerminalService, global_terminal_service
 from modules.brain_sync import BrainSyncService, global_brain_sync
+from modules.agent_workspace import AgentWorkspace, global_agent_workspace
 
 __all__ = [
     "VisionAgent",
@@ -36,4 +37,6 @@ __all__ = [
     "global_terminal_service",
     "BrainSyncService",
     "global_brain_sync",
+    "AgentWorkspace",
+    "global_agent_workspace",
 ]

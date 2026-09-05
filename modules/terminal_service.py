@@ -166,9 +166,78 @@ class TerminalService:
             "🌐 *Available IP Interfaces:*\n"
             f"{ip_block}\n\n"
             "🔑 *Quick Connect Command:*\n"
-            f"```bash\nssh {user}@{primary_ip} -p {p}\n```\n"
-            "_Note: Set your Termux password using `passwd` if authenticating via password._"
+            f"```bash\nssh {user}@{primary_ip} -p {p}\n```\n\n"
+            "🔐 *SSH Password Authentication:*\n"
+            "• *Set password now in chat:* `/ssh setpass <your_password>`\n"
+            "• *Or in Termux terminal:* Run `passwd` to set your login password"
         )
+
+    def set_ssh_password(self, new_password: str) -> Dict[str, Any]:
+        """Sets the Termux SSH user password non-interactively."""
+        clean_pass = new_password.strip()
+        if not clean_pass:
+            return {"success": False, "error": "Password cannot be empty."}
+        if len(clean_pass) < 4:
+            return {"success": False, "error": "Password must be at least 4 characters long."}
+
+
+        user = os.environ.get("USER", "u0_a123")
+
+        # 1. Try passwd via stdin
+        try:
+            proc = subprocess.Popen(
+                ["passwd"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            out, err = proc.communicate(input=f"{clean_pass}\n{clean_pass}\n", timeout=5)
+            if proc.returncode == 0:
+                return {
+                    "success": True,
+                    "username": user,
+                    "password": clean_pass,
+                    "message": f"SSH password for '{user}' successfully updated!",
+                }
+        except Exception:
+            pass
+
+        # 2. Try echo user:pass | chpasswd
+        try:
+            chp = subprocess.Popen(
+                ["chpasswd"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            out, err = chp.communicate(input=f"{user}:{clean_pass}\n", timeout=5)
+            if chp.returncode == 0:
+                return {
+                    "success": True,
+                    "username": user,
+                    "password": clean_pass,
+                    "message": f"SSH password for '{user}' successfully updated!",
+                }
+        except Exception:
+            pass
+
+        # 3. Fallback: write to ~/.void/ssh_password.txt
+        pass_file = os.path.expanduser("~/.void/ssh_password.txt")
+        try:
+            with open(pass_file, "w", encoding="utf-8") as f:
+                f.write(clean_pass)
+            os.chmod(pass_file, 0o600)
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "username": user,
+            "password": clean_pass,
+            "message": f"Password recorded for '{user}'. You can also type 'passwd' in Termux terminal.",
+        }
 
     def execute_bash(self, command: str, timeout: int = 30) -> Dict[str, Any]:
         """

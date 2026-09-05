@@ -316,5 +316,56 @@ class VisionAgent:
             "history": results,
         }
 
+    def inspect_active_screen(self) -> Dict[str, Any]:
+        """
+        Perceives live display frame, inspects UI hierarchy or screencap,
+        grounds interactive elements and visible text, returning a structured summary.
+        """
+        frame = self.capture_frame()
+        dump_xml = ""
+        if IS_TERMUX:
+            try:
+                dump_path = "/sdcard/window_dump.xml"
+                SecureCommandExecutor.run(["uiautomator", "dump", dump_path], timeout=5)
+                if os.path.exists(dump_path):
+                    with open(dump_path, "r", encoding="utf-8", errors="ignore") as f:
+                        dump_xml = f.read()
+            except Exception as e:
+                logger.debug(f"uiautomator dump not available: {e}")
+
+        elements = self.ground_elements(dump_xml or frame)
+        element_summaries = []
+        for elem in elements:
+            label = elem.label.strip()
+            if label:
+                element_summaries.append(f"• [{elem.element_type.upper()}] \"{label}\" at {elem.center}")
+            else:
+                element_summaries.append(f"• [{elem.element_type.upper()}] id={elem.element_id} at {elem.center}")
+
+        readable = f"📱 Screen Resolution: {self._screen_width}x{self._screen_height}\n"
+        readable += f"🖼️ Frame Path: {frame.image_path}\n"
+        readable += f"🔍 Visible Interactive Elements ({len(elements)} detected):\n"
+        readable += "\n".join(element_summaries[:15])
+
+        return {
+            "success": True,
+            "image_path": frame.image_path,
+            "width": self._screen_width,
+            "height": self._screen_height,
+            "elements_count": len(elements),
+            "elements": [
+                {
+                    "id": e.element_id,
+                    "label": e.label,
+                    "type": e.element_type,
+                    "center": e.center,
+                    "bbox": e.bbox,
+                }
+                for e in elements
+            ],
+            "readable_summary": readable,
+        }
+
 
 global_vision_agent = VisionAgent()
+

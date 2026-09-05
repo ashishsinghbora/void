@@ -44,13 +44,13 @@ class DeepLinkEngine:
                 "message": f"[Simulator] Dispatched intent to '{clean_uri}'",
             }
 
-        # 1. Try am start intent vector
-        cmd = ["am", "start", "-a", action, "-d", clean_uri]
+        # 1. Try am start intent vector with FLAG_ACTIVITY_NEW_TASK for Android 14/15
+        cmd = ["am", "start", "-a", action, "-d", clean_uri, "-f", "0x10000000"]
         if package:
             cmd.extend(["-p", package])
 
         res = SecureCommandExecutor.run(cmd, timeout=5)
-        if not res.startswith("Error") and "Activity not started" not in res:
+        if not res.startswith("Error") and "Activity not started" not in res and "Failure calling service" not in res:
             return {"success": True, "method": "am_start", "output": res}
 
         # 2. Fallback to termux-open
@@ -213,7 +213,7 @@ class DeepLinkEngine:
             "main": "android.settings.SETTINGS",
         }
         action = settings_map.get(setting_name.lower().strip(), "android.settings.SETTINGS")
-        cmd = ["am", "start", "-a", action]
+        cmd = ["am", "start", "-a", action, "-f", "0x10000000"]
         res = SecureCommandExecutor.run(cmd, timeout=5)
         success = not res.startswith("Error")
         return {"success": success, "setting": setting_name, "action": action, "output": res}

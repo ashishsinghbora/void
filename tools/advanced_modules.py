@@ -254,3 +254,51 @@ class ResearchYouTubeStrategy(ToolStrategy):
             error=res.get("error"),
             duration_ms=0,
         )
+
+
+class InspectScreenStrategy(ToolStrategy):
+    """Perceives and reads what is currently displayed on the phone screen."""
+
+    def __init__(self):
+        super().__init__(
+            name="inspect_screen",
+            description="Perceive and inspect what is currently shown on the phone screen, reading text and identifying visible interactive elements.",
+            schema={"type": "object", "properties": {}},
+        )
+
+    def execute(self, **kwargs: Any) -> ToolExecutionResult:
+        res = global_vision_agent.inspect_active_screen()
+        return ToolExecutionResult(
+            success=res.get("success", False),
+            output=res.get("readable_summary", "Live screen frame analyzed."),
+            error=res.get("error"),
+            duration_ms=0,
+        )
+
+
+class RunAutomationScriptStrategy(ToolStrategy):
+    """Executes custom Python or Bash automation scripts stored in ~/.void/scripts/."""
+
+    def __init__(self):
+        super().__init__(
+            name="run_automation_script",
+            description="Run a custom Python or Bash automation script located in ~/.void/scripts/.",
+            schema={
+                "type": "object",
+                "properties": {
+                    "script_name": {"type": "string", "description": "Filename of script (e.g. 'clean.py', 'backup.sh')"},
+                },
+                "required": ["script_name"],
+            },
+        )
+
+    def execute(self, script_name: str = "", **kwargs: Any) -> ToolExecutionResult:
+        from modules.agent_workspace import global_agent_workspace
+        res = global_agent_workspace.run_script(script_name)
+        return ToolExecutionResult(
+            success=res.get("success", False),
+            output=res.get("output"),
+            error=res.get("error"),
+            duration_ms=0,
+        )
+

@@ -25,6 +25,8 @@ from extensions.manager import global_extension_manager
 from telegram.database.db_manager import global_bot_db
 from telegram.database.models import UserRole, UserTier
 from telegram.handlers import register_all_handlers
+from telegram.utils.safe_telegram import safe_send_message
+
 
 logger = logging.getLogger("VoidAdvancedCore.Telegram")
 
@@ -190,12 +192,12 @@ class AuthenticatedTelegramController:
         register_all_handlers(self._bot, self)
 
     def _execute_photo_capture(self, chat_id: int) -> None:
-        """Captures photo and dispatches file directly to Telegram."""
+        """Captures photo and dispatches file directly to Telegram with Cloud Vault mirroring."""
         bot = self._bot
         if not bot:
             return
 
-        status_msg = bot.send_message(chat_id, "📸 *Capturing device camera photo...*", parse_mode="Markdown")
+        status_msg = safe_send_message(bot, chat_id, "📸 *Capturing device camera photo...*", parse_mode="Markdown")
         res = global_tool_registry.execute("take_camera_photo")
 
         # Check for photo file existence
@@ -229,6 +231,8 @@ class AuthenticatedTelegramController:
                             global_cloud_vault.upload_file(
                                 file_path=p,
                                 category="camera",
+                                file_type="photo",
+                                tag="camera_capture",
                                 caption="Void Camera Capture",
                             )
                     except Exception as ve:
@@ -237,25 +241,32 @@ class AuthenticatedTelegramController:
                 except Exception as e:
                     logger.warning(f"Failed to send photo from {p}: {e}")
 
-        try:
-            bot.delete_message(chat_id, status_msg.message_id)
-        except Exception:
-            pass
+        if status_msg and hasattr(status_msg, "message_id"):
+            try:
+                bot.delete_message(chat_id, status_msg.message_id)
+            except Exception:
+                pass
 
         if not photo_sent:
-            bot.send_message(
+            err_msg = str(res.output or res.error or "Capture process returned no valid image.")
+            safe_send_message(
+                bot,
                 chat_id,
-                f"📸 *Camera Output:*\n`{res.output or res.error}`",
-                parse_mode="Markdown"
+                f"⚠️ *Camera Photo Notice:*\n`{err_msg}`\n\n"
+                "💡 *Permissions & Diagnostics Guide:*\n"
+                "• Confirm `termux-api` package is installed: `pkg install termux-api`\n"
+                "• Run `termux-setup-storage` in Termux to grant storage access\n"
+                "• Grant **Camera** & **Files** permissions to **Termux** and **Termux:API** in Android Settings -> Apps -> Permissions",
+                parse_mode="Markdown",
             )
 
     def _execute_screenshot_capture(self, chat_id: int) -> None:
-        """Captures device screen and dispatches photo directly to Telegram."""
+        """Captures device screen and dispatches photo directly to Telegram with Cloud Vault mirroring."""
         bot = self._bot
         if not bot:
             return
 
-        status_msg = bot.send_message(chat_id, "📸 *Capturing device screen...*", parse_mode="Markdown")
+        status_msg = safe_send_message(bot, chat_id, "📸 *Capturing device screen...*", parse_mode="Markdown")
         res = global_tool_registry.execute("capture_screen")
 
         screenshot_path = None
@@ -291,6 +302,8 @@ class AuthenticatedTelegramController:
                         global_cloud_vault.upload_file(
                             file_path=screenshot_path,
                             category="screenshots",
+                            file_type="photo",
+                            tag="screenshot_capture",
                             caption="Automated screenshot capture",
                         )
                 except Exception as ve:
@@ -298,13 +311,25 @@ class AuthenticatedTelegramController:
             except Exception as e:
                 logger.warning(f"Failed to dispatch screenshot: {e}")
 
-        try:
-            bot.delete_message(chat_id, status_msg.message_id)
-        except Exception:
-            pass
+        if status_msg and hasattr(status_msg, "message_id"):
+            try:
+                bot.delete_message(chat_id, status_msg.message_id)
+            except Exception:
+                pass
 
         if not shot_sent:
-            bot.send_message(chat_id, f"📸 *Screen Capture Output:*\n`{res.output or res.error}`", parse_mode="Markdown")
+            err_msg = str(res.output or res.error or "Capture process returned no valid image.")
+            safe_send_message(
+                bot,
+                chat_id,
+                f"⚠️ *Screen Capture Notice:*\n`{err_msg}`\n\n"
+                "💡 *Permissions & Diagnostics Guide:*\n"
+                "• Run `termux-setup-storage` in Termux\n"
+                "• Grant **Display over other apps** or Screen Capture permission to Termux/Termux:API if prompted\n"
+                "• Or manually run: `/sh screencap -p /sdcard/Download/void_screen.png`",
+                parse_mode="Markdown",
+            )
+
 
     def start_polling(self) -> None:
         """Runs the single-threaded robust polling loop with reconnection retry."""

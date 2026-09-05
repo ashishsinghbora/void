@@ -22,6 +22,9 @@ if os.path.exists(TERMUX_BIN_PATH) and TERMUX_BIN_PATH not in os.environ.get("PA
 
 from core.command_executor import IS_TERMUX
 from daemons.service_runner import global_daemon_supervisor
+from utils.async_runner import global_async_supervisor
+from modules.notification_watcher import global_notification_watcher
+from modules.scraper_vault import global_scraper_vault
 from telegram.bot_controller import AuthenticatedTelegramController
 from security.credential_vault import CredentialVault
 from core.fastfetch import global_fastfetch_collector
@@ -48,6 +51,9 @@ def parse_arguments():
 def setup_signal_handlers():
     def handle_shutdown(signum, frame):
         logger.info(f"Received shutdown signal ({signum}). Initiating clean teardown...")
+        global_notification_watcher.stop()
+        global_scraper_vault.stop()
+        global_async_supervisor.stop()
         global_daemon_supervisor.stop_all()
         sys.exit(0)
 
@@ -98,11 +104,16 @@ def main():
     if admin_id:
         os.environ["ADMIN_TELEGRAM_ID"] = str(admin_id)
 
-    # 2. Start Proactive Automation Daemons
+    # 2. Start Proactive Automation Daemons & Async Supervisor
     if not args.no_daemons:
         logger.info("Initializing proactive automation daemons...")
         global_daemon_supervisor.set_wake_lock_enabled(not args.no_wake_lock)
         global_daemon_supervisor.start_all()
+
+        logger.info("Starting asynchronous background monitors (Notification & Scraper)...")
+        global_async_supervisor.start()
+        global_async_supervisor.schedule_coroutine(global_notification_watcher.run_async_watcher(interval_seconds=2.0))
+        global_async_supervisor.schedule_coroutine(global_scraper_vault.run_async_scraper(interval_seconds=300.0))
     else:
         logger.info("Proactive daemons disabled via --no-daemons flag.")
 
@@ -112,6 +123,9 @@ def main():
             logger.info("Starting authenticated Telegram bot controller listener...")
             admin_set = {int(admin_id)} if admin_id and str(admin_id).isdigit() else None
             tg_controller = AuthenticatedTelegramController(token=telegram_token, admin_ids=admin_set)
+            if tg_controller._bot:
+                global_notification_watcher.bind_bot(tg_controller._bot)
+                global_scraper_vault.bind_bot(tg_controller._bot)
             tg_controller.start_polling()
         else:
             logger.info("Telegram remote control offline (no token configured).")
@@ -125,6 +139,9 @@ def main():
         logger.error(f"Unexpected service exception: {e}")
     finally:
         logger.info("Executing clean daemon and wake-lock teardown...")
+        global_notification_watcher.stop()
+        global_scraper_vault.stop()
+        global_async_supervisor.stop()
         global_daemon_supervisor.stop_all()
 
 

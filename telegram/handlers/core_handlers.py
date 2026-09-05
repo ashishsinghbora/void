@@ -400,6 +400,62 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         _execute_ai_agent(message, query)
 
     # ----------------------------------------------------------------------
+    # Voice Note and Audio Query Handler (Whisper / Audio Surrogate)
+    # ----------------------------------------------------------------------
+    @bot.message_handler(content_types=["voice", "audio"])
+    def handle_voice_message(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            logger.warning(f"Blocked unauthorized voice note from user_id: {user_id}")
+            return
+
+        user = global_bot_db.get_user(user_id)
+        user_tier = user.tier if user else UserTier.FREE
+
+        allowed, wait_sec = global_rate_limiter.allow_request(str(user_id), user_tier)
+        if not allowed:
+            safe_reply(
+                bot,
+                message,
+                f"⚠️ *Rate limit exceeded.* Please wait {wait_sec}s before sending another message.",
+                parse_mode="Markdown",
+            )
+            return
+
+        controller._session_manager.touch_session(str(user_id))
+        status_msg = safe_reply(bot, message, "🎙️ *Processing voice message...* Transcribing audio.", parse_mode="Markdown")
+
+        try:
+            from modules.voice_handler import global_voice_handler
+            result = global_voice_handler.process_telegram_voice_note(bot, message)
+            if status_msg and hasattr(status_msg, "message_id"):
+                try:
+                    bot.delete_message(message.chat.id, status_msg.message_id)
+                except Exception:
+                    pass
+
+            if result.get("success"):
+                transcription = result.get("transcription", "")
+                agent_resp = result.get("agent_response", "")
+                safe_reply(
+                    bot,
+                    message,
+                    f"🗣️ *Transcribed:* \"_{transcription}_\"\n\n{agent_resp}",
+                    reply_markup=controller.get_main_keyboard(),
+                    parse_mode="Markdown",
+                )
+            else:
+                safe_reply(
+                    bot,
+                    message,
+                    f"⚠️ *Voice processing error:* {result.get('error', 'Could not process audio')}",
+                    parse_mode="Markdown",
+                )
+        except Exception as e:
+            logger.error(f"Voice handling error: {e}")
+            safe_reply(bot, message, f"⚠️ *Voice error:* {str(e)}", parse_mode="Markdown")
+
+    # ----------------------------------------------------------------------
     # Generic Natural Language Query Handler with Streaming Reasoning
     # ----------------------------------------------------------------------
     @bot.message_handler(func=lambda message: True)

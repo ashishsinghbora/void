@@ -207,6 +207,29 @@ class ToolRegistry:
     create_needle_callables = create_void_callables
 
 
+def register_advanced_strategies(registry: ToolRegistry) -> None:
+    """Registers advanced capability strategies (VisionAgent, DeepLink, ScraperVault, NotificationWatcher)."""
+    try:
+        from tools.advanced_modules import (
+            VisionTapStrategy,
+            VisionFormFillStrategy,
+            DeepLinkPayStrategy,
+            TrackPriceStrategy,
+            GetLatestOtpStrategy,
+        )
+        for s in [
+            VisionTapStrategy(),
+            VisionFormFillStrategy(),
+            DeepLinkPayStrategy(),
+            TrackPriceStrategy(),
+            GetLatestOtpStrategy(),
+        ]:
+            registry.register(s)
+    except Exception as e:
+        logger.warning(f"Failed to register advanced tool strategies: {e}")
+
+
 # Global default registry instance
 global_tool_registry = ToolRegistry()
+register_advanced_strategies(global_tool_registry)
 

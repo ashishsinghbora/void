@@ -15,6 +15,10 @@ logger = logging.getLogger("VoidConfig")
 CONFIG_ENV_PATH = os.path.expanduser("~/.void/config.env")
 CONFIG_DIR = os.path.expanduser("~/.void")
 
+# Hard mobile constraints: all models and compute allocations strictly under 2GB
+MAX_MODEL_SIZE_MB: float = 2000.0
+MAX_ALLOWED_RAM_MB: int = 2048
+
 
 class VoidConfig:
     """Singleton configuration manager with atomic persistence."""
@@ -34,8 +38,9 @@ class VoidConfig:
         self.admin_ids: Set[int] = set()
         self.vault_group_id: Optional[int] = None
         self.vault_title: str = "Void Cloud Vault"
+        self.vault_paired_at: float = 0.0
         self.active_model_id: str = "qwen-0.5b"
-        self.max_ram_mb: int = 50
+        self.max_ram_mb: int = 500
         self.whisper_model: str = "tiny"
         self.ocr_engine: str = "local"
         self.rate_limit_free: float = 0.5
@@ -65,11 +70,16 @@ class VoidConfig:
                             self.vault_group_id = int(v)
                         except ValueError:
                             pass
+                    elif k in ("TELEGRAM_VAULT_PAIRED_AT", "VAULT_PAIRED_AT"):
+                        try:
+                            self.vault_paired_at = float(v)
+                        except ValueError:
+                            pass
                     elif k == "VOID_ACTIVE_MODEL":
                         self.active_model_id = v
                     elif k == "VOID_MAX_RAM_MB":
                         try:
-                            self.max_ram_mb = int(v)
+                            self.max_ram_mb = min(int(v), MAX_ALLOWED_RAM_MB)
                         except ValueError:
                             pass
         except Exception as e:
@@ -106,6 +116,7 @@ class VoidConfig:
                 f'TELEGRAM_BOT_TOKEN="{self.bot_token}"',
                 f'TELEGRAM_ADMIN_IDS="{",".join(map(str, sorted(self.admin_ids)))}"',
                 f'TELEGRAM_VAULT_GROUP_ID="{self.vault_group_id or ""}"',
+                f'TELEGRAM_VAULT_PAIRED_AT="{self.vault_paired_at}"',
                 f'VOID_ACTIVE_MODEL="{self.active_model_id}"',
                 f'VOID_MAX_RAM_MB="{self.max_ram_mb}"',
             ]
@@ -124,14 +135,54 @@ class VoidConfig:
     def telegram_token(self) -> str:
         return self.bot_token
 
+    @property
+    def ram_limit_mb(self) -> int:
+        return self.max_ram_mb
+
+    def set_ram_limit(self, limit_mb: int) -> int:
+        """Sets active RAM limit clamped strictly under 2GB (2048 MB)."""
+        clamped = min(max(int(limit_mb), 50), MAX_ALLOWED_RAM_MB)
+        self.max_ram_mb = clamped
+        self.save()
+        logger.info(f"Updated dynamic RAM limit: {self.max_ram_mb} MB (Profile: {self.get_compute_profile().get('tier')})")
+        return self.max_ram_mb
+
+    def get_compute_profile(self) -> Dict[str, Any]:
+        """Returns the active mobile compute profile dictionary."""
+        if self.max_ram_mb <= 150:
+            tier = "lite"
+        elif self.max_ram_mb <= 1200:
+            tier = "balanced"
+        else:
+            tier = "max_edge"
+
+        return {
+            "tier": tier,
+            "ram_limit_mb": self.max_ram_mb,
+            "max_allowed_ram_mb": MAX_ALLOWED_RAM_MB,
+            "max_model_size_mb": MAX_MODEL_SIZE_MB,
+            "context_window": 2048 if tier == "max_edge" else 1024,
+            "quant_preference": "Q4_K_M",
+        }
+
     def update_credentials(self, token: str, admin_id: int) -> None:
         self.bot_token = token
         self.admin_ids.add(admin_id)
         self.save()
 
-    def set_vault_group(self, group_id: int) -> None:
+    def set_vault_group(self, group_id: int, title: str = "Void Cloud Vault") -> None:
+        import time
         self.vault_group_id = group_id
+        self.vault_title = title
+        self.vault_paired_at = time.time()
         self.save()
+        logger.info(f"Paired Telegram Cloud Vault: {group_id} ('{title}') at {self.vault_paired_at}")
+
+    def is_vault_configured(self) -> bool:
+        return bool(self.vault_group_id)
+
+    def is_vault_enabled(self) -> bool:
+        return bool(self.vault_group_id)
 
 
 global_config = VoidConfig()

@@ -72,6 +72,18 @@ class CloudVaultService:
         except Exception as e:
             logger.debug(f"Could not persist vault config to db: {e}")
 
+        try:
+            from config.settings import global_config
+            global_config.set_vault_group(chat_id, actual_title)
+        except Exception:
+            pass
+
+        try:
+            from modules.brain_sync import global_brain_sync
+            global_brain_sync.pair_vault_group(chat_id, actual_title)
+        except Exception:
+            pass
+
         os.environ["TELEGRAM_VAULT_GROUP_ID"] = str(chat_id)
 
         # Update ~/.void/config.env

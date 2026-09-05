@@ -25,6 +25,7 @@ from daemons.service_runner import global_daemon_supervisor
 from utils.async_runner import global_async_supervisor
 from modules.notification_watcher import global_notification_watcher
 from modules.scraper_vault import global_scraper_vault
+from modules.brain_sync import global_brain_sync
 from telegram.bot_controller import AuthenticatedTelegramController
 from security.credential_vault import CredentialVault
 from core.fastfetch import global_fastfetch_collector
@@ -53,6 +54,7 @@ def setup_signal_handlers():
         logger.info(f"Received shutdown signal ({signum}). Initiating clean teardown...")
         global_notification_watcher.stop()
         global_scraper_vault.stop()
+        global_brain_sync.stop()
         global_async_supervisor.stop()
         global_daemon_supervisor.stop_all()
         sys.exit(0)
@@ -110,10 +112,11 @@ def main():
         global_daemon_supervisor.set_wake_lock_enabled(not args.no_wake_lock)
         global_daemon_supervisor.start_all()
 
-        logger.info("Starting asynchronous background monitors (Notification & Scraper)...")
+        logger.info("Starting asynchronous background monitors (Notification, Scraper & Brain Sync)...")
         global_async_supervisor.start()
         global_async_supervisor.schedule_coroutine(global_notification_watcher.run_async_watcher(interval_seconds=2.0))
         global_async_supervisor.schedule_coroutine(global_scraper_vault.run_async_scraper(interval_seconds=300.0))
+        global_async_supervisor.schedule_coroutine(global_brain_sync.run_async_sync(interval_seconds=60.0))
     else:
         logger.info("Proactive daemons disabled via --no-daemons flag.")
 
@@ -126,6 +129,7 @@ def main():
             if tg_controller._bot:
                 global_notification_watcher.bind_bot(tg_controller._bot)
                 global_scraper_vault.bind_bot(tg_controller._bot)
+                global_brain_sync.bind_bot(tg_controller._bot)
             tg_controller.start_polling()
         else:
             logger.info("Telegram remote control offline (no token configured).")
@@ -141,6 +145,7 @@ def main():
         logger.info("Executing clean daemon and wake-lock teardown...")
         global_notification_watcher.stop()
         global_scraper_vault.stop()
+        global_brain_sync.stop()
         global_async_supervisor.stop()
         global_daemon_supervisor.stop_all()
 

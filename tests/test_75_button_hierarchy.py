@@ -56,22 +56,17 @@ def _get_button_callbacks(markup):
 
 
 def test_level_1_root_control_center():
-    """Verify Level 1 Root Control Center contains 15 categories."""
+    """Verify Level 1 Root Control Center contains 6 permanent extensible hubs."""
     card, markup = get_root_menu()
     assert "Root Control Center" in card
     total_buttons = _count_buttons(markup)
-    assert total_buttons == 15
+    assert total_buttons == 6
 
     callbacks = _get_button_callbacks(markup)
     expected_categories = [
-        "menu_telemetry", "menu_input",
-        "menu_models", "menu_vault",
-        "menu_security", "menu_shell",
-        "menu_maintenance", "menu_media",
-        "menu_notif", "menu_macros",
-        "menu_connectivity", "menu_storage",
-        "menu_debug", "menu_power",
-        "menu_analytics",
+        "menu_screen", "menu_vault",
+        "menu_terminal", "menu_research",
+        "menu_apps", "menu_security",
     ]
     for cat in expected_categories:
         assert cat in callbacks, f"Missing category: {cat}"
@@ -125,11 +120,11 @@ def test_submenu_back_navigation_resolver():
     """Verify _resolve_submenu resolves root menu on cb_back_main without hanging states."""
     card, markup = _resolve_submenu("cb_back_main")
     assert "Root Control Center" in card
-    assert _count_buttons(markup) == 15
+    assert _count_buttons(markup) == 6
 
     card_root, markup_root = _resolve_submenu("menu_root")
     assert "Root Control Center" in card_root
-    assert _count_buttons(markup_root) == 15
+    assert _count_buttons(markup_root) == 6
 
 
 def test_menu_router_dispatches_all_categories():

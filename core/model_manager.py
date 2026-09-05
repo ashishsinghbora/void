@@ -88,17 +88,10 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
         "sha256": None,
     },
-    "qwen2.5-3b": {
-        "name": "Qwen2.5-3B-Instruct-Q4",
-        "tier": "Heavy Edge (~2.2GB RAM)",
-        "description": "Enterprise-grade local intelligence for devices with 8GB+ RAM",
-        "filename": "qwen2.5-3b-instruct-q4_k_m.gguf",
-        "size_mb": 2150.0,
-        "min_ram_mb": 6000,
-        "url": "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
-        "sha256": None,
-    },
 }
+
+MAX_MODEL_SIZE_MB: float = 2000.0  # Hard constraint: all local edge models strictly under 2GB
+
 
 
 def detect_system_ram_mb() -> Tuple[int, int]:
@@ -151,7 +144,7 @@ def recommend_model_for_device(total_ram_mb: int) -> str:
     elif total_ram_mb < 9000:
         return "smollm2-1.7b"
     else:
-        return "qwen2.5-3b"
+        return "qwen2.5-1.5b"
 
 
 class ModelManager:
@@ -175,6 +168,18 @@ class ModelManager:
         if total_ram_mb is None:
             total_ram_mb, _ = detect_system_ram_mb()
         return recommend_model_for_device(total_ram_mb)
+
+    def get_recommended_models(self, available_ram_mb: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Returns recommended model options strictly under 2GB."""
+        rec_id = recommend_model_for_device(available_ram_mb or 4096)
+        catalog = self.list_available_models()
+        results = []
+        if rec_id in catalog:
+            results.append(catalog[rec_id])
+        for mid, meta in catalog.items():
+            if mid != rec_id and meta.get("size_mb", 0) <= MAX_MODEL_SIZE_MB:
+                results.append(meta)
+        return results
 
     def list_installed_models(self) -> List[Dict[str, Any]]:
         """Scans models directory for installed .gguf, .bin, or .onnx files."""
@@ -257,7 +262,7 @@ class ModelManager:
                 return target
 
         # 3. Check catalog preference order in models_dir
-        for key in ("smollm-135m", "needle-compact", "qwen-0.5b", "llama-3.2-1b", "smollm2-1.7b", "qwen2.5-1.5b", "qwen2.5-3b"):
+        for key in ("smollm-135m", "needle-compact", "qwen-0.5b", "llama-3.2-1b", "smollm2-1.7b", "qwen2.5-1.5b"):
             cat_file = MODEL_CATALOG[key]["filename"]
             target = os.path.join(self._models_dir, cat_file)
             if os.path.isfile(target) and os.path.getsize(target) > 0:

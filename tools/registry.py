@@ -216,6 +216,10 @@ def register_advanced_strategies(registry: ToolRegistry) -> None:
             DeepLinkPayStrategy,
             TrackPriceStrategy,
             GetLatestOtpStrategy,
+            ExecuteBashStrategy,
+            ManageSshStrategy,
+            BrainSyncStrategy,
+            ResearchYouTubeStrategy,
         )
         for s in [
             VisionTapStrategy(),
@@ -223,6 +227,10 @@ def register_advanced_strategies(registry: ToolRegistry) -> None:
             DeepLinkPayStrategy(),
             TrackPriceStrategy(),
             GetLatestOtpStrategy(),
+            ExecuteBashStrategy(),
+            ManageSshStrategy(),
+            BrainSyncStrategy(),
+            ResearchYouTubeStrategy(),
         ]:
             registry.register(s)
     except Exception as e:

@@ -250,11 +250,27 @@ def render_telemetry_widget(vw: int):
     except Exception:
         pass
 
+    ssh_str = f"{C_DIM}Stopped{C_RESET}"
+    try:
+        from modules.terminal_service import global_terminal_service
+        if global_terminal_service.is_ssh_running():
+            ssh_str = f"{C_GREEN}Active (Port 8022){C_RESET}"
+    except Exception:
+        pass
+
+    ram_cap = 2048
+    try:
+        from config.settings import global_config
+        ram_cap = global_config.ram_limit_mb
+    except Exception:
+        pass
+
     print(render_card_top("LIVE TELEMETRY & RESOURCES", vw, C_BLUE, C_BOLD + C_BLUE))
-    print(render_card_line(f"💾 RAM RSS:    {rss_color}{rss_mb} MB{C_RESET} {C_DIM}(<30MB target){C_RESET}", vw, C_BLUE))
+    print(render_card_line(f"💾 RAM RSS:    {rss_color}{rss_mb} MB{C_RESET} {C_DIM}(Cap: {ram_cap}MB <2GB){C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🔋 Battery:    {C_YELLOW}{bat_str}{C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🗄️ Database:   {C_CYAN}{db_stats}{C_RESET}", vw, C_BLUE))
     print(render_card_line(f"🧠 Engine:     {C_PURPLE}{engine[:24]}{C_RESET}", vw, C_BLUE))
+    print(render_card_line(f"💻 Remote SSH: {ssh_str}", vw, C_BLUE))
     print(render_card_line(f"☁️ Vault:      {vault_str}", vw, C_BLUE))
     print(render_card_line(f"🤖 Bot Plane:  {bot_str}", vw, C_BLUE))
     print(render_card_bottom(vw, C_BLUE))
@@ -274,9 +290,10 @@ def render_quick_actions_menu(vw: int, torch_on: bool = False):
     print(render_card_line(f"{C_BOLD}[7]{C_RESET} 📋 Audit Logs  {C_BOLD}[8]{C_RESET} 🛡️ Security", vw, C_PURPLE))
     print(render_card_line(f"{C_BOLD}[9]{C_RESET} 🧠 Local LLMs  {C_BOLD}[0]{C_RESET} 🤖 Bot Hub", vw, C_PURPLE))
     print(render_card_line(f"{C_BOLD}[V]{C_RESET} ☁️ Cloud Vault {C_BOLD}[W]{C_RESET} 🧙 LLM Wizard", vw, C_PURPLE))
-    print(render_card_line(f"{C_BOLD}[S]{C_RESET} 📱 Screenshot  {C_BOLD}[Q]{C_RESET} 🚪 Exit App", vw, C_PURPLE))
+    print(render_card_line(f"{C_BOLD}[X]{C_RESET} 💻 Remote SSH  {C_BOLD}[S]{C_RESET} 📱 Screenshot", vw, C_PURPLE))
+    print(render_card_line(f"{C_BOLD}[Q]{C_RESET} 🚪 Exit App", vw, C_PURPLE))
     print(render_card_bottom(vw, C_PURPLE))
-    print(f"{C_DIM}Tip: Enter [1-0, V, W, S] or type any natural language directive:{C_RESET}\n")
+    print(f"{C_DIM}Tip: Enter [1-0, V, W, X, S] or type any natural language directive:{C_RESET}\n")
 
 
 def print_help_screen(vw: int):
@@ -289,6 +306,9 @@ def print_help_screen(vw: int):
         ("/battery", "Query battery percentage"),
         ("/photo", "Capture camera photo"),
         ("/clean", "Clean cache & temporary files"),
+        ("/sh <cmd>", "Run local bash/shell command"),
+        ("/ssh [up|down]", "Manage OpenSSH daemon"),
+        ("/ram [mb]", "Inspect or set RAM ceiling (<2GB)"),
         ("/plugins", "Open dynamic extension store"),
         ("/logs", "Inspect hardware audit logs"),
         ("/security", "View sessions & cipher status"),
@@ -718,6 +738,12 @@ def main():
                 print(f"📸 {res.output if res.success else res.error}")
                 continue
 
+            elif query.lower() in ("x", "ssh"):
+                from modules.terminal_service import global_terminal_service
+                card = global_terminal_service.get_connection_card()
+                print(f"\n{card}\n")
+                continue
+
             # ------------------------------------------------------------------
             # Slash Commands Handling
             # ------------------------------------------------------------------
@@ -728,6 +754,34 @@ def main():
 
                 if cmd in ("help", "?"):
                     print_help_screen(vw)
+                elif cmd in ("sh", "bash"):
+                    if not cmd_args:
+                        print(f"{C_RED}Usage: /sh <command>{C_RESET}")
+                    else:
+                        from modules.terminal_service import global_terminal_service
+                        res = global_terminal_service.execute_bash(" ".join(cmd_args))
+                        code = res.get("returncode", 0)
+                        out = res.get("output", "")
+                        stat = f"{C_GREEN}[EXIT 0]{C_RESET}" if code == 0 else f"{C_RED}[EXIT {code}]{C_RESET}"
+                        print(f"{stat}\n{out}")
+                elif cmd == "ssh":
+                    from modules.terminal_service import global_terminal_service
+                    if cmd_args:
+                        action = cmd_args[0].lower()
+                        if action in ("start", "up", "on"):
+                            global_terminal_service.start_ssh()
+                        elif action in ("stop", "down", "off"):
+                            global_terminal_service.stop_ssh()
+                    card = global_terminal_service.get_connection_card()
+                    print(f"\n{card}\n")
+                elif cmd == "ram":
+                    from config.settings import global_config
+                    if cmd_args and cmd_args[0].isdigit():
+                        act = global_config.set_ram_limit(int(cmd_args[0]))
+                        print(f"{C_GREEN}RAM limit set to {act} MB (Absolute cap: 2048 MB){C_RESET}")
+                    else:
+                        prof = global_config.get_compute_profile()
+                        print(f"RAM Limit: {prof['ram_limit_mb']} MB (Cap: {prof['max_allowed_ram_mb']} MB, Max Model: {prof['max_model_size_mb']} MB)")
                 elif cmd in ("fastfetch", "fetch", "status"):
                     print(global_fastfetch_collector.render_ascii(max_width=vw))
                 elif cmd in ("torch", "flashlight"):

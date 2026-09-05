@@ -22,6 +22,7 @@ from telegram.handlers.storage_handlers import register_storage_handlers, get_st
 from telegram.handlers.power_handlers import register_power_handlers, get_power_submenu
 from telegram.handlers.analytics_handlers import register_analytics_handlers, get_analytics_submenu
 from telegram.handlers.billing_handlers import register_billing_handlers, get_billing_keyboard, render_billing_card
+from telegram.handlers.hub_handlers import register_hub_handlers, get_screen_hub, get_vault_hub, get_terminal_hub, get_research_hub, get_apps_hub, get_security_hub
 from telegram.handlers.settings_handlers import register_settings_handlers, get_settings_keyboard, render_settings_card
 from telegram.handlers.callback_handlers import register_callback_handlers
 from telegram.handlers.core_handlers import register_core_handlers
@@ -33,7 +34,8 @@ def register_all_handlers(bot, controller):
     Specific category handlers are registered first, followed by the menu router,
     then catch-all callback handlers, and finally message command handlers.
     """
-    # 1. Register menu router (menu_* and cb_back_main navigation)
+    # 1. Register permanent 6-hub action router and navigation
+    register_hub_handlers(bot, controller)
     register_menu_router(bot, controller)
 
     # 2. Specific Sub-menu Action Handlers (75 total functions)

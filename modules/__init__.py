@@ -14,6 +14,8 @@ from modules.notification_watcher import NotificationWatcher, global_notificatio
 from modules.voice_handler import VoiceHandler, global_voice_handler
 from modules.deep_links import DeepLinkEngine, global_deep_links
 from modules.scraper_vault import ScraperVaultService, global_scraper_vault
+from modules.terminal_service import TerminalService, global_terminal_service
+from modules.brain_sync import BrainSyncService, global_brain_sync
 
 __all__ = [
     "VisionAgent",
@@ -30,4 +32,8 @@ __all__ = [
     "global_deep_links",
     "ScraperVaultService",
     "global_scraper_vault",
+    "TerminalService",
+    "global_terminal_service",
+    "BrainSyncService",
+    "global_brain_sync",
 ]

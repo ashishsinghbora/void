@@ -9,6 +9,8 @@ Dispatches direct URI schemes and Android intents via `am start` across:
 - Native Android System Settings Intents
 """
 
+import os
+import time
 import urllib.parse
 import logging
 from typing import Dict, Any, Optional
@@ -145,6 +147,45 @@ class DeepLinkEngine:
         encoded_query = urllib.parse.quote(search_query)
         yt_uri = f"https://www.youtube.com/results?search_query={encoded_query}"
         return cls.dispatch_uri(yt_uri, package="com.google.android.youtube")
+
+    @classmethod
+    def play_youtube_video(cls, video_url_or_id: str) -> Dict[str, Any]:
+        """Launches specific YouTube video by ID or URL."""
+        clean = video_url_or_id.strip()
+        if "watch?v=" in clean:
+            vid = clean.split("watch?v=")[-1].split("&")[0]
+        elif "youtu.be/" in clean:
+            vid = clean.split("youtu.be/")[-1].split("?")[0]
+        else:
+            vid = clean
+        uri = f"vnd.youtube:{vid}"
+        return cls.dispatch_uri(uri, package="com.google.android.youtube")
+
+    @classmethod
+    def research_youtube_topic(cls, topic: str) -> Dict[str, Any]:
+        """
+        Deep automated YouTube research: searches topic, archives research note in brain,
+        and launches the video playback intent.
+        """
+        res = cls.search_youtube(topic)
+        try:
+            import time
+            brain_dir = os.path.expanduser("~/.void/brain")
+            os.makedirs(brain_dir, exist_ok=True)
+            note_file = os.path.join(brain_dir, f"yt_research_{int(time.time())}.md")
+            note_content = (
+                f"# YouTube Research: {topic}\n\n"
+                f"- **Timestamp:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"- **Query:** `{topic}`\n"
+                f"- **Status:** Launched\n\n"
+                f"#RESEARCH #MEDIA\n"
+            )
+            with open(note_file, "w", encoding="utf-8") as f:
+                f.write(note_content)
+            res["research_note"] = note_file
+        except Exception:
+            pass
+        return res
 
     @classmethod
     def search_spotify(cls, track_or_artist: str) -> Dict[str, Any]:

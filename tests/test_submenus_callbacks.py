@@ -19,7 +19,7 @@ def test_telegram_controller_initialization():
     ctrl = AuthenticatedTelegramController(token="123456789:AAG_mock_test_token", admin_ids={12345})
     markup = ctrl.get_main_keyboard()
     assert markup is not None
-    assert len(markup.keyboard) >= 8  # 15 buttons across 8 rows
+    assert len(markup.keyboard) >= 3  # 6 hubs across 3 rows
 
 
 def test_shell_command_execution():

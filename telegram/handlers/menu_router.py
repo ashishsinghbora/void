@@ -19,23 +19,30 @@ except ImportError:
 
 # Dispatch table: callback_data -> (module_path, function_name)
 MENU_DISPATCH = {
-    "menu_telemetry": ("telegram.handlers.telemetry_handlers", "get_telemetry_submenu"),
-    "menu_input": ("telegram.handlers.input_handlers", "get_input_submenu"),
-    "menu_models": ("telegram.handlers.model_handlers", "get_model_submenu"),
-    "menu_vault": ("telegram.handlers.vault_handlers", "get_vault_submenu"),
-    "menu_security": ("telegram.handlers.security_handlers", "get_security_submenu"),
-    "menu_shell": ("telegram.handlers.shell_handlers", "get_shell_submenu"),
-    "menu_maintenance": ("telegram.handlers.maintenance_handlers", "get_maintenance_submenu"),
-    "menu_media": ("telegram.handlers.media_handlers", "get_media_submenu"),
-    "menu_audio": ("telegram.handlers.media_handlers", "get_media_submenu"),
-    "menu_notif": ("telegram.handlers.notification_handlers", "get_notification_submenu"),
-    "menu_notifications": ("telegram.handlers.notification_handlers", "get_notification_submenu"),
-    "menu_macros": ("telegram.handlers.automation_handlers", "get_automation_submenu"),
-    "menu_connectivity": ("telegram.handlers.connectivity_handlers", "get_connectivity_submenu"),
-    "menu_storage": ("telegram.handlers.storage_handlers", "get_storage_submenu"),
-    "menu_debug": ("telegram.handlers.debug_handlers", "get_debug_submenu"),
-    "menu_power": ("telegram.handlers.power_handlers", "get_power_submenu"),
-    "menu_analytics": ("telegram.handlers.analytics_handlers", "get_analytics_submenu"),
+    # Permanent 6-Hub Control Center
+    "menu_screen": ("telegram.handlers.hub_handlers", "get_screen_hub"),
+    "menu_vault": ("telegram.handlers.hub_handlers", "get_vault_hub"),
+    "menu_terminal": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_research": ("telegram.handlers.hub_handlers", "get_research_hub"),
+    "menu_apps": ("telegram.handlers.hub_handlers", "get_apps_hub"),
+    "menu_security": ("telegram.handlers.hub_handlers", "get_security_hub"),
+
+    # Backward compatibility mappings for legacy menus
+    "menu_input": ("telegram.handlers.hub_handlers", "get_screen_hub"),
+    "menu_models": ("telegram.handlers.hub_handlers", "get_vault_hub"),
+    "menu_shell": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_media": ("telegram.handlers.hub_handlers", "get_research_hub"),
+    "menu_audio": ("telegram.handlers.hub_handlers", "get_research_hub"),
+    "menu_notif": ("telegram.handlers.hub_handlers", "get_security_hub"),
+    "menu_notifications": ("telegram.handlers.hub_handlers", "get_security_hub"),
+    "menu_macros": ("telegram.handlers.hub_handlers", "get_apps_hub"),
+    "menu_connectivity": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_storage": ("telegram.handlers.hub_handlers", "get_vault_hub"),
+    "menu_debug": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_power": ("telegram.handlers.hub_handlers", "get_apps_hub"),
+    "menu_telemetry": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_analytics": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
+    "menu_maintenance": ("telegram.handlers.hub_handlers", "get_terminal_hub"),
 }
 
 # Module cache for lazy imports
@@ -44,48 +51,29 @@ _module_cache = {}
 
 def get_root_menu() -> Tuple[str, Any]:
     """
-    Renders Level 1: Root Control Center (15 Categories in 2-column layout).
+    Renders Level 1: Consolidated Permanent 6-Hub Control Center.
     """
     card = (
-        "⚡ *Void Edge Agent Root Control Center*\n\n"
+        "⚡ *Void Edge Agent Root Control Center & Hub*\n\n"
         "Autonomous mobile orchestration platform for Android & Termux.\n"
         "Persistent Telegram Cloud Vault & Hardware Automation Engine.\n\n"
-        "👇 *Select a category to navigate sub-menus:*"
+        "👇 *Select a control hub from the permanent dashboard:*"
     )
     if types is None:
         return card, None
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("📂 Core & Telemetry", callback_data="menu_telemetry"),
-        types.InlineKeyboardButton("🎮 Device Touch & Input", callback_data="menu_input"),
+        types.InlineKeyboardButton("📱 [ 👁️ Screen & Touch ]", callback_data="menu_screen"),
+        types.InlineKeyboardButton("🧠 [ ☁️ Vault & Brain ]", callback_data="menu_vault"),
     )
     markup.add(
-        types.InlineKeyboardButton("🧠 Model Management", callback_data="menu_models"),
-        types.InlineKeyboardButton("☁️ Cloud Vault & Media", callback_data="menu_vault"),
+        types.InlineKeyboardButton("💻 [ ⚡ Terminal & SSH ]", callback_data="menu_terminal"),
+        types.InlineKeyboardButton("🌐 [ 🔍 Research & YouTube ]", callback_data="menu_research"),
     )
     markup.add(
-        types.InlineKeyboardButton("🛡️ Security & Network", callback_data="menu_security"),
-        types.InlineKeyboardButton("💻 Shell & Terminal", callback_data="menu_shell"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("⚙️ Maintenance & Tools", callback_data="menu_maintenance"),
-        types.InlineKeyboardButton("🎵 Media & Audio Hub", callback_data="menu_media"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("🔔 Notifications & Clip", callback_data="menu_notif"),
-        types.InlineKeyboardButton("⚡ Automation Macros", callback_data="menu_macros"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("🌐 Connectivity & GPS", callback_data="menu_connectivity"),
-        types.InlineKeyboardButton("📁 Storage & Files", callback_data="menu_storage"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("🐞 Debug & Diagnostics", callback_data="menu_debug"),
-        types.InlineKeyboardButton("🔄 System Power State", callback_data="menu_power"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("📊 Analytics & Logs", callback_data="menu_analytics"),
+        types.InlineKeyboardButton("📲 [ 🚀 Apps & Intents ]", callback_data="menu_apps"),
+        types.InlineKeyboardButton("🔐 [ 🛡️ Security & Interceptor ]", callback_data="menu_security"),
     )
     return card, markup
 

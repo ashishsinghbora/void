@@ -12,6 +12,8 @@ from modules.vision_agent import global_vision_agent
 from modules.deep_links import global_deep_links
 from modules.scraper_vault import global_scraper_vault
 from modules.notification_watcher import global_notification_watcher
+from modules.terminal_service import global_terminal_service
+from modules.brain_sync import global_brain_sync
 
 
 class VisionTapStrategy(ToolStrategy):
@@ -148,5 +150,107 @@ class GetLatestOtpStrategy(ToolStrategy):
             success=True,
             output=f"Latest OTP: {latest.code} for {latest.service}{amt_str}",
             error=None,
+            duration_ms=0,
+        )
+
+
+class ExecuteBashStrategy(ToolStrategy):
+    """Executes bash commands with timeout guardrails and stdout capture."""
+
+    def __init__(self):
+        super().__init__(
+            name="execute_bash",
+            description="Execute arbitrary bash shell commands (e.g. 'ls', 'uptime', 'pkg list-installed', 'curl').",
+            schema={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Shell command line to execute"},
+                    "timeout": {"type": "integer", "description": "Timeout in seconds (default 30)"},
+                },
+                "required": ["command"],
+            },
+        )
+
+    def execute(self, command: str = "", timeout: int = 30, **kwargs: Any) -> ToolExecutionResult:
+        res = global_terminal_service.execute_bash(command, timeout=timeout)
+        return ToolExecutionResult(
+            success=res.get("success", False),
+            output=res.get("output") or res.get("error"),
+            error=res.get("error"),
+            duration_ms=0,
+        )
+
+
+class ManageSshStrategy(ToolStrategy):
+    """Controls the Termux OpenSSH daemon (start, stop, status)."""
+
+    def __init__(self):
+        super().__init__(
+            name="manage_ssh",
+            description="Control the remote OpenSSH server daemon (actions: 'status', 'start', 'stop').",
+            schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action: 'status', 'start', or 'stop'"},
+                    "port": {"type": "integer", "description": "Port number (default 8022)"},
+                },
+            },
+        )
+
+    def execute(self, action: str = "status", port: int = 8022, **kwargs: Any) -> ToolExecutionResult:
+        act = action.lower().strip()
+        if act == "start":
+            res = global_terminal_service.start_ssh(port=port)
+            output = res.get("connection_info") or res.get("message") or str(res)
+            return ToolExecutionResult(success=res.get("success", False), output=output, error=res.get("error"), duration_ms=0)
+        elif act == "stop":
+            res = global_terminal_service.stop_ssh()
+            return ToolExecutionResult(success=res.get("success", False), output=res.get("message"), error=res.get("error"), duration_ms=0)
+        else:
+            card = global_terminal_service.get_connection_card(port=port)
+            return ToolExecutionResult(success=True, output=card, error=None, duration_ms=0)
+
+
+class BrainSyncStrategy(ToolStrategy):
+    """Triggers bidirectional sync between local phone brain and Telegram group vault."""
+
+    def __init__(self):
+        super().__init__(
+            name="brain_sync",
+            description="Synchronize local storage (~/.void/brain/ and ~/.void/vault/) with the Telegram Cloud Vault.",
+            schema={"type": "object", "properties": {}},
+        )
+
+    def execute(self, **kwargs: Any) -> ToolExecutionResult:
+        uploaded = global_brain_sync.sync_local_to_cloud()
+        count = len(uploaded)
+        return ToolExecutionResult(
+            success=True,
+            output=f"Synchronized {count} files between phone brain and Telegram Cloud Vault.",
+            error=None,
+            duration_ms=0,
+        )
+
+
+class ResearchYouTubeStrategy(ToolStrategy):
+    """Conducts automated YouTube topic research, logs notes, and launches stream."""
+
+    def __init__(self):
+        super().__init__(
+            name="research_youtube",
+            description="Search YouTube topic, record research notes to brain, and launch video playback intent.",
+            schema={
+                "type": "object",
+                "properties": {"topic": {"type": "string", "description": "Search topic or video title"}},
+                "required": ["topic"],
+            },
+        )
+
+    def execute(self, topic: str = "", **kwargs: Any) -> ToolExecutionResult:
+        res = global_deep_links.research_youtube_topic(topic)
+        return ToolExecutionResult(
+            success=res.get("success", False),
+            output=f"YouTube research initiated for '{topic}'. Note archived at: {res.get('research_note', 'brain')}",
+            error=res.get("error"),
             duration_ms=0,
         )

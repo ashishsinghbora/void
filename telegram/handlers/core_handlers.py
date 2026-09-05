@@ -54,11 +54,28 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         )
 
         tier_badge = f"[{user.tier.value}]"
+        from config.settings import global_config
+        from telegram.services.cloud_vault import global_cloud_vault
+        from modules.terminal_service import global_terminal_service
+
+        vault_status_line = (
+            "• *Cloud Vault:* 🟢 Paired & Syncing"
+            if global_cloud_vault.is_vault_configured()
+            else "• *Cloud Vault:* ⚠️ _Unpaired_ (Add bot to private group as Admin & send `/link_vault`)"
+        )
+        ssh_status = "🟢 Running" if global_terminal_service.is_ssh_running() else "⚪ Stopped"
+
         text = (
             f"⚡ *Void Edge Agent Remote Control Hub* {tier_badge}\n\n"
-            "Autonomous conversational agent for Android / Termux with Cloud Vault.\n\n"
+            "Autonomous conversational agent for Android / Termux with Cloud Vault.\n"
+            f"{vault_status_line}\n"
+            f"• *SSH Server:* `{ssh_status}` | *RAM Cap:* `{global_config.ram_limit_mb} MB`\n\n"
             "• *Instant Natural Language Actions:*\n"
-            "  _\"turn on flashlight\"_, _\"swipe up\"_, _\"open settings\"_, _\"search lo-fi beats on youtube\"_\n\n"
+            "  _\"turn on flashlight\"_, _\"swipe up\"_, _\"search lo-fi on youtube\"_, _\"run bash free -m\"_\n\n"
+            "• *Remote Shell & Compute Controls:*\n"
+            "  • `/sh <cmd>` - Remote bash command execution\n"
+            "  • `/ssh [start|stop]` - Termux OpenSSH daemon credentials\n"
+            "  • `/ram [mb]` - Dynamic RAM limit (< 2048 MB ceiling)\n\n"
             "• *Mobile Touch & Screen Controls:*\n"
             "  • `/tap <x> <y>` - Touch coordinate simulation\n"
             "  • `/swipe <x1> <y1> <x2> <y2>` - Screen swipe gesture\n"
@@ -68,6 +85,7 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             "  • `/search <app> <query>` - In-app deep query\n\n"
             "• *Cloud Vault & Intelligence:*\n"
             "  • `/vault` - Persistent Telegram group memory & media vault\n"
+            "  • `/set_vault <link|id>` - Pair private Telegram group\n"
             "  • `/setup_model` - Device RAM detector & GGUF model setup\n"
             "  • `/fastfetch` - ASCII system & hardware telemetry\n"
             "  • `/status` - Live memory footprint & daemon status\n"
@@ -76,6 +94,78 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
             "👇 *Select an action from the dashboard below:*"
         )
         bot.reply_to(message, text, reply_markup=controller.get_main_keyboard(), parse_mode="Markdown")
+
+    @bot.message_handler(commands=["sh", "bash"])
+    def handle_bash_command(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            bot.reply_to(message, "💻 *Usage:* `/sh <command>`\nExample: `/sh uname -a` or `/sh free -m`", parse_mode="Markdown")
+            return
+        cmd = parts[1].strip()
+        from modules.terminal_service import global_terminal_service
+        res = global_terminal_service.execute_bash(cmd)
+        out_text = res.get("output", "")
+        if len(out_text) > 3500:
+            out_text = out_text[:3500] + "\n... [output truncated]"
+        if not out_text.strip():
+            out_text = "(command produced no output)"
+        status_icon = "✅" if res.get("returncode", 0) == 0 else "❌"
+        bot.reply_to(
+            message,
+            f"{status_icon} *Command:* `{cmd}`\n*Exit Code:* `{res.get('returncode', 0)}`\n```bash\n{out_text}\n```",
+            parse_mode="Markdown",
+        )
+
+    @bot.message_handler(commands=["ssh"])
+    def handle_ssh_command(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        parts = message.text.strip().split()
+        from modules.terminal_service import global_terminal_service
+        if len(parts) > 1:
+            action = parts[1].lower()
+            if action in ("start", "up", "on"):
+                global_terminal_service.start_ssh()
+            elif action in ("stop", "down", "off"):
+                global_terminal_service.stop_ssh()
+        card = global_terminal_service.get_connection_card()
+        bot.reply_to(message, card, parse_mode="Markdown")
+
+    @bot.message_handler(commands=["ram"])
+    def handle_ram_command(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        from config.settings import global_config
+        parts = message.text.strip().split()
+        if len(parts) >= 2:
+            val_str = parts[-1]
+            try:
+                limit_mb = int(val_str)
+                actual = global_config.set_ram_limit(limit_mb)
+                bot.reply_to(
+                    message,
+                    f"🧠 *RAM Limit Updated:*\n• Configured: `{actual} MB`\n• Absolute Ceiling: `2048 MB` (Immune to Android LMK crashes)",
+                    parse_mode="Markdown",
+                )
+                return
+            except ValueError:
+                pass
+        profile = global_config.get_compute_profile()
+        bot.reply_to(
+            message,
+            f"🧠 *Device Compute Profile:*\n"
+            f"• *RAM Limit:* `{profile['ram_limit_mb']} MB` (Strictly ≤ {profile['max_allowed_ram_mb']} MB)\n"
+            f"• *Model Cap:* `{profile['max_model_size_mb']} MB`\n"
+            f"• *Context Window:* `{profile['context_window']} tokens`\n"
+            f"• *Quantization:* `{profile['quant_preference']}`\n\n"
+            "To adjust RAM limit: `/ram <megabytes>` (e.g. `/ram 1024` or `/ram 1536`)",
+            parse_mode="Markdown",
+        )
 
     @bot.message_handler(commands=["fastfetch"])
     def handle_fastfetch(message):
@@ -100,12 +190,16 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         usage = resource.getrusage(resource.RUSAGE_SELF)
         rss_mb = round(usage.ru_maxrss / 1024.0, 1)
 
+        from modules.terminal_service import global_terminal_service
+        ssh_stat = "Running (Port 8022)" if global_terminal_service.is_ssh_running() else "Stopped"
+
         status_text = (
             "📊 *Void Control Plane Telemetry*\n\n"
             f"• *Subscription Tier:* `{tier_str}`\n"
             f"• *Memory Footprint (RSS):* `{rss_mb} MB` (Target < 30MB)\n"
             f"• *Active Edge Nodes:* `{active_devices}/{len(devices)} online`\n"
             f"• *Active Model Engine:* `{global_model_manager.get_active_model_name() or 'Heuristic ReAct'}`\n"
+            f"• *SSH Server:* `{ssh_stat}`\n"
             f"• *Installed Plugins:* `{len(global_extension_manager.list_extensions())}`\n"
             f"• *Database Engine:* `SQLite WAL Mode`\n\n"
             "🟢 _All local daemons functioning optimally._"

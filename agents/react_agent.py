@@ -383,13 +383,14 @@ class AutonomousReActAgent:
             args = {"screen": screen}
             thought = f"Navigating to Android {screen.capitalize()} settings screen... ⚙️"
 
-        # 6. In-App Content Search (YouTube, Maps, Google)
-        elif "youtube" in q and any(w in q for w in ("play", "song", "video", "search", "watch")):
-            term_m = re.search(r"(?:search\s+(?:for\s+)?|play\s+|watch\s+)(.+?)(?:\s+on\s+youtube|\s+in\s+youtube|$)", query, re.IGNORECASE)
-            q_term = term_m.group(1).strip() if term_m else query
+        # 6. In-App Content Search (YouTube, Maps, Google) & Media
+        elif any(w in q for w in ("youtube", "song", "music", "lofi", "lo-fi", "video")) or ("play" in q and "store" not in q) or ("search" in q and "youtube" in q) or ("serach" in q and "youtube" in q):
+            term_m = re.search(r"(?:search|serach|play|find|listen|watch)\s+(?:for\s+)?(.+?)(?:\s+on\s+youtube|\s+in\s+youtube|$)", query, re.IGNORECASE)
+            q_term = term_m.group(1).strip() if term_m else "lo-fi hip hop"
+            q_term = re.sub(r"^(and\s+)?(play|search|serach)\s+", "", q_term, flags=re.IGNORECASE).strip()
             tool_name = "search_app_content"
-            args = {"app": "youtube", "query": q_term}
-            thought = f"Searching YouTube for \"{q_term}\"... ▶️"
+            args = {"app": "youtube", "query": q_term or "lo-fi hip hop"}
+            thought = f"Searching YouTube for \"{args['query']}\"... ▶️"
         elif "map" in q and "search" in q:
             term_m = re.search(r"search\s+(?:for\s+)?(.+)", query, re.IGNORECASE)
             q_term = term_m.group(1).strip() if term_m else "coffee"
@@ -448,9 +449,35 @@ class AutonomousReActAgent:
             app_match = re.search(r"(?:launch|start|open)\s+(?:app\s+)?([A-Za-z0-9_]+)", query, re.IGNORECASE)
             args = {"app_name": app_match.group(1) if app_match else "settings"}
             thought = f"Launching installed application '{args['app_name']}'... 🚀"
+
+        # 8. SSH, Password & Security Inquiries
+        elif "ssh" in q and any(w in q for w in ("password", "pass", "pwd", "credential", "login", "connect", "port")):
+            tool_name = "manage_ssh"
+            args = {"action": "status"}
+            thought = "Checking SSH server status and credentials... 🔑"
+
+        # 9. Cloud Vault & Brain Sync
+        elif any(w in q for w in ("vault", "could vault", "cloud vault", "sync")):
+            tool_name = "brain_sync"
+            thought = "Interfacing with Telegram Cloud Vault... ☁️"
+
+        # 10. Bash & Shell Commands
+        elif any(w in q for w in ("bash", "shell", "run command", "terminal command")) or q.startswith("run ") or q.startswith("sh "):
+            cmd_m = re.search(r"(?:bash|shell|command|run|sh)\s+(.+)", query, re.IGNORECASE)
+            cmd = cmd_m.group(1).strip() if cmd_m else "free -m"
+            tool_name = "execute_bash"
+            args = {"command": cmd}
+            thought = f"Executing terminal bash command: `{cmd}`... 💻"
+
+        # 11. Screen Inspection
+        elif any(w in q for w in ("inspect screen", "see screen", "look at screen", "read screen", "what is on screen")):
+            tool_name = "inspect_screen"
+            thought = "Inspecting active screen and visible elements... 👁️"
+
+        # 12. Conversational Assistant Fallback (NEVER default to battery status)
         else:
-            tool_name = "get_battery_status"
-            thought = "Checking system vitals... 🔋"
+            tool_name = None
+            thought = "Deliberating on conversational assistant response..."
 
         # Stream thought callback
         if thought_callback:
@@ -467,29 +494,123 @@ class AutonomousReActAgent:
             except Exception:
                 pass
 
-        res: ToolExecutionResult = self._registry.execute(tool_name, **args)
-        elapsed = round((time.perf_counter() - start) * 1000, 2)
+        if tool_name:
+            res: ToolExecutionResult = self._registry.execute(tool_name, **args)
+            obs = str(res.output if res.success else res.error)
+            status = AgentState.COMPLETED if res.success else AgentState.FAILED
+        else:
+            obs = self._generate_assistant_answer(query)
+            status = AgentState.COMPLETED
 
-        obs = str(res.output if res.success else res.error)
+        elapsed = round((time.perf_counter() - start) * 1000, 2)
         step = ReActStep(
             step_number=step_number,
             thought=thought,
             action=tool_name,
             action_input=args,
             observation=obs,
-            status=AgentState.COMPLETED if res.success else AgentState.FAILED,
+            status=status,
             duration_ms=elapsed,
         )
         self._log_repo.log_step(
             session_id=session_id,
             step=step_number,
-            tool_name=tool_name,
+            tool_name=tool_name or "assistant_chat",
             tool_input=args,
             observation=obs,
             status=step.status.value,
             duration_ms=elapsed,
         )
         return step
+
+    def _generate_assistant_answer(self, query: str) -> str:
+        """Generates contextual conversational responses when no hardware tool is triggered."""
+        import os
+        q = query.lower().strip()
+
+        # SSH credentials
+        if "ssh" in q or "password" in q:
+            pass_file = os.path.expanduser("~/.void/ssh_password.txt")
+            saved_pwd = ""
+            if os.path.exists(pass_file):
+                try:
+                    with open(pass_file, "r", encoding="utf-8") as f:
+                        saved_pwd = f.read().strip()
+                except Exception:
+                    pass
+            user = os.environ.get("USER", "u0_a123")
+            if saved_pwd:
+                return (
+                    f"🔑 *SSH Access Credentials:*\n\n"
+                    f"• *Username:* `{user}`\n"
+                    f"• *Recorded Password:* `{saved_pwd}`\n"
+                    f"• *Port:* `8022`\n\n"
+                    f"Connect via terminal:\n```bash\nssh {user}@<phone_ip> -p 8022\n```\n"
+                    f"To update your password anytime, use: `/ssh setpass <new_password>`"
+                )
+            return (
+                f"🔑 *SSH Authentication:*\n\n"
+                f"No SSH password set yet for user `{user}`.\n"
+                f"Set your password directly here: `/ssh setpass <your_password>`\n"
+                f"Or type `passwd` in the Termux terminal."
+            )
+
+        # Cloud Vault
+        if "vault" in q or "cloud" in q:
+            from telegram.services.cloud_vault import global_cloud_vault
+            is_conf = global_cloud_vault.is_configured()
+            title = global_cloud_vault.get_vault_title()
+            if is_conf:
+                return (
+                    f"☁️ *Telegram Cloud Vault:*\n\n"
+                    f"• *Paired Group:* `{title}` (Active 🟢)\n"
+                    f"• All camera photos, audio clips, notes, and task history are automatically mirrored.\n"
+                    f"• Send `/vault` to inspect synced items, or tell me: _\"sync vault\"_."
+                )
+            return (
+                "☁️ *Cloud Vault Pairing Guide:*\n\n"
+                "1. Add `@voidtermuxbot` to your private Telegram group as an **Administrator**.\n"
+                "2. Send `/link_vault` inside that group to bind it permanently.\n"
+                "3. Or link in DM via: `/set_vault <group_id_or_invite_link>`."
+            )
+
+        # Clear
+        if q in ("/clear", "clear", "reset"):
+            return "🧹 Conversation session context is cleared and ready for new instructions."
+
+        # Greetings
+        if any(w in q for w in ("hello", "hi", "hey", "who are you", "what are you")):
+            return (
+                "⚡ *Hello! I am Void, your autonomous digital twin agent.*\n\n"
+                "I run directly inside Termux on your Android phone:\n"
+                "• 💻 *Shell & SSH:* Run bash (`/sh <cmd>`) and manage SSH server (`/ssh`)\n"
+                "• 🧠 *Brain & Memory:* Task history (`/history`), skills (`/skills`), agent stats (`/agent`)\n"
+                "• 📂 *Scripts Workspace:* Execute Python and Bash scripts (`/scripts`, `/run_script`)\n"
+                "• ☁️ *Cloud Vault:* Telegram group cloud storage (`/vault`)\n"
+                "• 🔦 *Hardware Controls:* Flashlight, battery vitals, volume, and vibration\n\n"
+                "How can I assist you right now?"
+            )
+
+        # Help
+        if any(w in q for w in ("help", "what can you do", "features", "commands")):
+            return (
+                "⚡ *Void Digital Twin Capabilities:*\n\n"
+                "• `/menu` - Root Control Center dashboard\n"
+                "• `/sh <cmd>` - Execute bash command\n"
+                "• `/ssh setpass <pwd>` - Set OpenSSH password\n"
+                "• `/agent` - Active LLM engine & compute budget\n"
+                "• `/history` - Recent task history & tool calls\n"
+                "• `/skills` - Active skills registry\n"
+                "• `/scripts` - User automation scripts workspace\n"
+                "• `/fastfetch` - Device telemetry specs"
+            )
+
+        return (
+            f"🤖 *Void Digital Twin:* Received instruction: \"_{query}_\".\n\n"
+            "Use `/menu` to access control hubs, `/sh <cmd>` for bash execution, "
+            "or explore `/skills` for all 9 digital twin capabilities."
+        )
+
 
     async def run_async(self, query: str, session_id: str = "default") -> AgentResponse:
         """Asynchronous wrapper ensuring main event loop remains non-blocking."""
@@ -516,8 +637,13 @@ def format_conversational_reply(query: str, steps: List[ReActStep], results: Lis
     action_in = primary_step.action_input or {}
     obs = primary_step.observation or ""
 
+    # Direct conversational assistant answers
+    if not action or action == "assistant_chat":
+        return obs or f"✨ Processed request: '{query}'."
+
     # Generate friendly conversational responses for mobile tools
     if action == "get_battery_status":
+
         import json
         try:
             data = json.loads(obs) if isinstance(obs, str) and obs.startswith("{") else {}

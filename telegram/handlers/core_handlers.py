@@ -555,11 +555,40 @@ def register_core_handlers(bot: Any, controller: Any) -> None:
         user_id = message.from_user.id
         if not controller._is_authorized(user_id):
             return
-        if hasattr(controller, "_execute_screenshot_capture"):
-            controller._execute_screenshot_capture(message.chat.id)
+        res = global_tool_registry.execute("capture_screen")
+        if res.success:
+            if hasattr(controller, "_execute_screenshot_capture"):
+                controller._execute_screenshot_capture(message.chat.id)
+            else:
+                safe_reply(bot, message, f"📸 {res.output}", parse_mode="Markdown")
         else:
-            res = global_tool_registry.execute("capture_screen")
-            bot.reply_to(message, f"📸 {res.output if res.success else res.error}", parse_mode="Markdown")
+            safe_reply(
+                bot,
+                message,
+                "📱 *Screen Capture Notice (Android 14/15):*\n\n"
+                "Android 14/15 SELinux blocks non-root applications from reading the screen frame buffer directly (`screencap: status -1`).\n\n"
+                "💡 *Working Touch & Screen Alternatives:*\n"
+                "• 👁️ `/ai inspect screen` — Inspect visible UI elements & layout\n"
+                "• 👆 `/tap <x> <y>` — Touch coordinate simulation\n"
+                "• ↔️ `/swipe <x1> <y1> <x2> <y2>` — Directional swipe gestures\n"
+                "• ⌨️ `/type <text>` — Virtual keyboard typing\n"
+                "• 🔘 `/key <HOME|BACK|RECENTS>` — Physical button keyevents",
+                parse_mode="Markdown",
+            )
+
+    @bot.message_handler(commands=["clear", "reset"])
+    def handle_clear(message):
+        user_id = message.from_user.id
+        if not controller._is_authorized(user_id):
+            return
+        from storage.repository import ConversationRepository
+        repo = ConversationRepository()
+        try:
+            repo.clear_session(f"telegram_{user_id}")
+        except Exception:
+            pass
+        safe_reply(bot, message, "🧹 *Conversation context cleared.* Ready for new tasks!", parse_mode="Markdown")
+
 
     @bot.message_handler(commands=["search"])
     def handle_search(message):

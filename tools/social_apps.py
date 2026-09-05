@@ -364,9 +364,15 @@ class LaunchInstalledAppStrategy(ToolStrategy):
                 duration_ms=0,
             )
 
+        if "Failure calling service" in res or "2147483646" in res:
+            clean_err = f"Android 14/15 restricts background app launches for '{app_name}' ({package}). Grant 'Display over other apps' to Termux in Android Settings, or launch via deep links."
+        else:
+            clean_err = f"Could not launch app '{app_name}' ({package}). {res}"
+
         return ToolExecutionResult(
             success=False,
             output=None,
-            error=f"Could not launch app '{app_name}' with package '{package}'. Error: {res}",
+            error=clean_err,
             duration_ms=0,
         )
+

@@ -168,24 +168,25 @@ class AuthenticatedTelegramController:
         return markup
 
     def get_apps_keyboard(self) -> Any:
-        """Constructs app launcher submenu."""
+        """Constructs safe app intents & hardware submenu."""
         if not HAS_TELEBOT or types is None:
             return None
 
         markup = types.InlineKeyboardMarkup(row_width=2)
-        btn_wa = types.InlineKeyboardButton("💬 WhatsApp", callback_data="app_launch:whatsapp")
-        btn_tg = types.InlineKeyboardButton("✈️ Telegram", callback_data="app_launch:telegram")
-        btn_cam = types.InlineKeyboardButton("📷 Camera App", callback_data="app_launch:camera")
-        btn_yt = types.InlineKeyboardButton("▶️ YouTube", callback_data="app_launch:youtube")
-        btn_chr = types.InlineKeyboardButton("🌐 Chrome", callback_data="app_launch:chrome")
-        btn_set = types.InlineKeyboardButton("⚙️ Settings", callback_data="app_launch:settings")
+        btn_upi = types.InlineKeyboardButton("💳 UPI Fast Pay", callback_data="hub_upi_guide")
+        btn_maps = types.InlineKeyboardButton("🗺️ Google Maps", callback_data="hub_maps_guide")
+        btn_yt = types.InlineKeyboardButton("▶️ YouTube Audio/Video", callback_data="hub_yt_guide")
+        btn_torch = types.InlineKeyboardButton("🔦 Flashlight", callback_data="cb_torch")
+        btn_bat = types.InlineKeyboardButton("🔋 Battery Status", callback_data="cb_battery")
+        btn_clean = types.InlineKeyboardButton("🧹 Clean Storage", callback_data="cb_clean")
         btn_back = types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main")
 
-        markup.add(btn_wa, btn_tg)
-        markup.add(btn_cam, btn_yt)
-        markup.add(btn_chr, btn_set)
+        markup.add(btn_upi, btn_maps)
+        markup.add(btn_yt, btn_torch)
+        markup.add(btn_bat, btn_clean)
         markup.add(btn_back)
         return markup
+
 
     def _register_handlers(self) -> None:
         """Registers all modular command, billing, settings, and callback handlers."""

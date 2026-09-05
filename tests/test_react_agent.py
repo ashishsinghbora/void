@@ -36,3 +36,34 @@ def test_react_agent_execution():
     assert res.query == "check the battery status"
     assert len(res.steps) >= 1
     assert res.reasoning != ""
+
+
+def test_react_agent_ssh_password_query():
+    agent = AutonomousReActAgent()
+    res = agent.run("what is the password for connecting to ssh", session_id="test_session")
+    assert "battery" not in res.conversational_reply.lower()
+    assert "ssh" in res.conversational_reply.lower() or "password" in res.conversational_reply.lower()
+
+
+def test_react_agent_vault_query():
+    agent = AutonomousReActAgent()
+    res = agent.run("can you send a message to your could vault", session_id="test_session")
+    assert "battery" not in res.conversational_reply.lower()
+    assert "vault" in res.conversational_reply.lower()
+
+
+def test_react_agent_youtube_typo_query():
+    agent = AutonomousReActAgent()
+    res = agent.run("serach and play lofi hip hop on youtube", session_id="test_session")
+    assert "battery" not in res.conversational_reply.lower()
+    assert "youtube" in res.conversational_reply.lower() or "lofi" in res.conversational_reply.lower()
+
+
+def test_react_agent_conversational_fallback():
+    agent = AutonomousReActAgent()
+    res = agent.run("who are you and what can you do", session_id="test_session")
+    assert res.steps[0].action != "get_battery_status"
+    assert "checked your battery vitals" not in res.conversational_reply.lower()
+    assert "void" in res.conversational_reply.lower()
+
+

@@ -54,9 +54,9 @@ def register_hub_extension(hub_name: str, label: str, callback_data: str) -> Non
 def get_screen_hub() -> Tuple[str, Any]:
     card = (
         "📱 *[ 👁️ Screen & Touch Control Hub ]*\n\n"
-        "• *Vision Agent:* Multimodal coordinate-free UI grounding\n"
-        "• *Form Sequences:* Multi-step automated text typing & field validation\n"
-        "• *Physical Gestures:* Dynamic swipes, taps, and hardware buttons\n\n"
+        "• *Vision Agent:* Live interactive UI element perception & grounding\n"
+        "• *Physical Gestures:* Dynamic swipes, taps, and hardware keys\n"
+        "• *Text Typing:* Remote virtual keyboard input simulation\n\n"
         "👇 *Select a mobile touch action:*"
     )
     if types is None:
@@ -64,25 +64,25 @@ def get_screen_hub() -> Tuple[str, Any]:
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("📸 Capture Screen", callback_data="cb_screenshot"),
-        types.InlineKeyboardButton("👁️ Inspect Screen", callback_data="hub_screen_inspect"),
-    )
-    markup.add(
+        types.InlineKeyboardButton("👁️ Inspect Screen Elements", callback_data="hub_screen_inspect"),
         types.InlineKeyboardButton("👆 Tap Coordinates", callback_data="input_tap"),
+    )
+    markup.add(
         types.InlineKeyboardButton("↔️ Swipe Gesture", callback_data="input_swipe"),
-    )
-    markup.add(
         types.InlineKeyboardButton("⌨️ Keyboard Type", callback_data="input_type"),
-        types.InlineKeyboardButton("🏠 Home Key", callback_data="key_home"),
     )
     markup.add(
+        types.InlineKeyboardButton("🏠 Home Key", callback_data="key_home"),
         types.InlineKeyboardButton("🔙 Back Key", callback_data="key_back"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("📑 Recents Key", callback_data="key_recents"),
+        types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main"),
     )
 
     for ext in HUB_EXTENSIONS["screen"]:
         markup.add(types.InlineKeyboardButton(ext["label"], callback_data=ext["callback"]))
 
-    markup.add(types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main"))
     return card, markup
 
 
@@ -189,7 +189,7 @@ def get_research_hub() -> Tuple[str, Any]:
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("▶️ Open YouTube", callback_data="app_launch:youtube"),
+        types.InlineKeyboardButton("▶️ Search YouTube", callback_data="hub_yt_guide"),
         types.InlineKeyboardButton("📑 YouTube Note Gen", callback_data="hub_yt_guide"),
     )
     markup.add(
@@ -210,27 +210,27 @@ def get_research_hub() -> Tuple[str, Any]:
 def get_apps_hub() -> Tuple[str, Any]:
     card = (
         "📲 *[ 🚀 Apps & Deep Intents Hub ]*\n\n"
-        "• *NPCI UPI Payments:* Launch GPay, PhonePe, Paytm with pre-filled VPA\n"
-        "• *Social & Comms:* WhatsApp 1-on-1 chats, Telegram profile intents\n"
-        "• *Navigation & Mobility:* Turn-by-turn Maps, Uber ride destination\n"
-        "• *Android System:* Jump straight into WiFi, Battery, Sound, Settings\n\n"
-        "👇 *Select an application or intent trigger:*"
+        "• *NPCI UPI Payments:* Launch instant UPI payments for GPay, PhonePe, Paytm\n"
+        "• *Navigation & Mobility:* Google Maps turn-by-turn routing\n"
+        "• *Hardware Controls:* Flashlight, haptic motor, and live battery vitals\n"
+        "• *Storage Audit:* One-tap cache and temporary junk cleaner\n\n"
+        "👇 *Select an intent or device control action:*"
     )
     if types is None:
         return card, None
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("💬 WhatsApp", callback_data="app_launch:whatsapp"),
-        types.InlineKeyboardButton("✈️ Telegram", callback_data="app_launch:telegram"),
-    )
-    markup.add(
-        types.InlineKeyboardButton("🗺️ Google Maps", callback_data="hub_maps_guide"),
         types.InlineKeyboardButton("💳 UPI Fast Pay", callback_data="hub_upi_guide"),
+        types.InlineKeyboardButton("🗺️ Google Maps Search", callback_data="hub_maps_guide"),
     )
     markup.add(
-        types.InlineKeyboardButton("⚙️ Device Settings", callback_data="app_launch:settings"),
-        types.InlineKeyboardButton("📷 Camera App", callback_data="app_launch:camera"),
+        types.InlineKeyboardButton("🔦 Flashlight Toggle", callback_data="cb_torch"),
+        types.InlineKeyboardButton("🔋 Battery Status", callback_data="cb_battery"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("📳 Haptic Vibrate", callback_data="cb_vibrate"),
+        types.InlineKeyboardButton("🧹 Storage Clean", callback_data="cb_clean"),
     )
 
     for ext in HUB_EXTENSIONS["apps"]:
@@ -238,6 +238,7 @@ def get_apps_hub() -> Tuple[str, Any]:
 
     markup.add(types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="cb_back_main"))
     return card, markup
+
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +281,12 @@ def register_hub_handlers(bot: Any, controller: Any) -> None:
     if not bot:
         return
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("hub_"))
+    @bot.callback_query_handler(func=lambda call: call.data and (
+        call.data.startswith("hub_") or
+        call.data.startswith("key_") or
+        call.data.startswith("input_") or
+        call.data in ("cb_torch", "cb_battery", "cb_vibrate")
+    ))
     def handle_hub_actions(call):
         user_id = call.from_user.id
         if not controller._is_authorized(user_id):
@@ -295,8 +301,59 @@ def register_hub_handlers(bot: Any, controller: Any) -> None:
         except Exception:
             pass
 
+        from tools.registry import global_tool_registry
+
+        # Physical Hardware Key Simulation
+        if data == "key_home":
+            global_tool_registry.execute("mobile_keyevent", key="home")
+            safe_edit_message_text(bot, "🏠 *Triggered Android Home Button.*", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "key_back":
+            global_tool_registry.execute("mobile_keyevent", key="back")
+            safe_edit_message_text(bot, "🔙 *Triggered Android Back Button.*", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "key_recents":
+            global_tool_registry.execute("mobile_keyevent", key="app_switch")
+            safe_edit_message_text(bot, "📑 *Triggered Android Recent Apps.*", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        # Touch & Input Instruction Shortcuts
+        elif data == "input_tap":
+            safe_edit_message_text(bot, "👆 *Simulate Screen Tap:*\n\nSend: `/tap <x> <y>`\nExample: `/tap 540 1200` to touch exact screen coordinates.", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "input_swipe":
+            safe_edit_message_text(bot, "↔️ *Simulate Screen Swipe:*\n\nSend: `/swipe <x1> <y1> <x2> <y2>`\nExample: `/swipe 540 1600 540 400` to swipe up (scroll down).", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "input_type":
+            safe_edit_message_text(bot, "⌨️ *Keyboard Typing Input:*\n\nSend: `/type <text>`\nExample: `/type Hello from Void` to type into focused field.", chat_id, msg_id, reply_markup=get_screen_hub()[1], parse_mode="Markdown")
+            return
+
+        # Quick Hardware Toggles
+        elif data == "cb_torch":
+            res = global_tool_registry.execute("torch_control")
+            out_txt = str(res.output or res.error)
+            safe_edit_message_text(bot, f"🔦 *Flashlight Toggled:*\n`{out_txt}`", chat_id, msg_id, reply_markup=get_apps_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "cb_battery":
+            res = global_tool_registry.execute("get_battery_status")
+            import json
+            out_json = json.dumps(res.output, indent=2) if isinstance(res.output, dict) else str(res.output)
+            safe_edit_message_text(bot, f"🔋 *Live Battery Vitals:*\n```json\n{out_json}\n```", chat_id, msg_id, reply_markup=get_apps_hub()[1], parse_mode="Markdown")
+            return
+
+        elif data == "cb_vibrate":
+            res = global_tool_registry.execute("vibrate_device", duration_ms=500)
+            safe_edit_message_text(bot, "📳 *Triggered Haptic Vibration Motor (500ms).* ✨", chat_id, msg_id, reply_markup=get_apps_hub()[1], parse_mode="Markdown")
+            return
+
         if data == "hub_vault_sync":
             uploaded = global_brain_sync.sync_local_to_cloud()
+
             count = len(uploaded)
             safe_edit_message_text(
                 bot,
